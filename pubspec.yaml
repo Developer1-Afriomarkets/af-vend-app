@@ -145,3 +145,5 @@ flutter_launcher_icons:
   android: true
   ios: true
   image_path: "assets/images/square_logo.png"
+dependency_overrides:
+  connectivity_plus: 6.1.0
