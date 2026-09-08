@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:auto_route/auto_route.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
@@ -14,6 +15,21 @@ import 'package:medusa_admin_dart_client/medusa_admin_dart_client_v2.dart';
 import 'package:medusa_admin/src/core/routing/app_router.dart';
 import 'package:medusa_admin/src/features/dashboard/presentation/widgets/drawer_widget.dart';
 import 'package:medusa_admin/src/features/store_details/presentation/bloc/store/store_bloc.dart';
+import 'package:medusa_admin/src/core/di/di.dart';
+
+String _formatCurrency(String? code) {
+  if (code == null) return '₦';
+  switch (code.toUpperCase()) {
+    case 'NGN': return '₦';
+    case 'USD': return r'$';
+    case 'EUR': return '€';
+    case 'GBP': return '£';
+    case 'GHS': return 'GH₵';
+    case 'CAD': return r'CA$';
+    case 'AUD': return r'AU$';
+    default: return '${code.toUpperCase()} ';
+  }
+}
 
 @RoutePage()
 class DashboardOverviewView extends StatefulWidget {
@@ -26,12 +42,29 @@ class DashboardOverviewView extends StatefulWidget {
 class _DashboardOverviewViewState extends State<DashboardOverviewView> {
   late final OrdersBloc _ordersBloc;
   late final ProductCrudBloc _productsBloc;
+  Map<String, dynamic>? _walletData;
+  Map<String, dynamic>? _bankAccount;
 
   @override
   void initState() {
     super.initState();
     _ordersBloc = OrdersBloc.instance..add(const OrdersEvent.loadOrders(queryParameters: {'limit': 50}));
     _productsBloc = ProductCrudBloc.instance..add(const ProductCrudEvent.loadAll(queryParameters: {'limit': 50}));
+    _loadWalletData();
+  }
+
+  Future<void> _loadWalletData() async {
+    try {
+      final dio = getIt<Dio>();
+      final res = await dio.get('/admin/vendor/wallet');
+      if (res.statusCode == 200 && res.data != null && mounted) {
+        final data = res.data as Map<String, dynamic>;
+        setState(() {
+          _walletData = (data['wallet'] as Map<String, dynamic>?) ?? data;
+          _bankAccount = (data['bankAccount'] as Map<String, dynamic>?) ?? (data['bank_account'] as Map<String, dynamic>?);
+        });
+      }
+    } catch (_) {}
   }
 
   @override
@@ -74,8 +107,13 @@ class _DashboardOverviewViewState extends State<DashboardOverviewView> {
         ),
         body: RefreshIndicator(
           onRefresh: () async {
-            _ordersBloc.add(const OrdersEvent.loadOrders(queryParameters: {'limit': 50}));
-            _productsBloc.add(const ProductCrudEvent.loadAll(queryParameters: {'limit': 50}));
+            await Future.wait([
+              _loadWalletData(),
+              Future.sync(() {
+                _ordersBloc.add(const OrdersEvent.loadOrders(queryParameters: {'limit': 50}));
+                _productsBloc.add(const ProductCrudEvent.loadAll(queryParameters: {'limit': 50}));
+              }),
+            ]);
           },
           child: SingleChildScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
@@ -251,143 +289,183 @@ class _DashboardOverviewViewState extends State<DashboardOverviewView> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               // 1. Vendor Wallet & Payout Banner
-                              Container(
-                                width: double.infinity,
-                                margin: const EdgeInsets.only(bottom: 16.0),
-                                decoration: BoxDecoration(
-                                  gradient: const LinearGradient(
-                                    colors: [Color(0xFF2C3E1B), Color(0xFF1B2C10)],
-                                    begin: Alignment.topLeft,
-                                    end: Alignment.bottomRight,
-                                  ),
+                              Material(
+                                color: Colors.transparent,
+                                child: InkWell(
+                                  onTap: () => context.pushRoute(const VendorWalletRoute()),
                                   borderRadius: BorderRadius.circular(16.0),
-                                  border: Border.all(
-                                    color: const Color(0xFFE48629).withOpacity(0.25),
-                                    width: 1.2,
-                                  ),
-                                ),
-                                child: Stack(
-                                  children: [
-                                    Positioned(
-                                      right: -10,
-                                      bottom: -10,
-                                      child: Icon(
-                                        CupertinoIcons.creditcard_fill,
-                                        size: 90,
-                                        color: Colors.white.withOpacity(0.04),
+                                  child: Container(
+                                    width: double.infinity,
+                                    margin: const EdgeInsets.only(bottom: 16.0),
+                                    decoration: BoxDecoration(
+                                      gradient: const LinearGradient(
+                                        colors: [Color(0xFF2C3E1B), Color(0xFF1B2C10)],
+                                        begin: Alignment.topLeft,
+                                        end: Alignment.bottomRight,
+                                      ),
+                                      borderRadius: BorderRadius.circular(16.0),
+                                      border: Border.all(
+                                        color: const Color(0xFFE48629).withOpacity(0.25),
+                                        width: 1.2,
                                       ),
                                     ),
-                                    Padding(
-                                      padding: const EdgeInsets.all(16.0),
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Row(
-                                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    child: Stack(
+                                      children: [
+                                        Positioned(
+                                          right: -10,
+                                          bottom: -10,
+                                          child: Icon(
+                                            CupertinoIcons.creditcard_fill,
+                                            size: 90,
+                                            color: Colors.white.withOpacity(0.04),
+                                          ),
+                                        ),
+                                        Padding(
+                                          padding: const EdgeInsets.all(16.0),
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
                                             children: [
-                                              Text(
-                                                'AFRIOMARKETS VENDOR WALLET',
-                                                style: GoogleFonts.comfortaa(
-                                                  color: const Color(0xFFF8B55B),
-                                                  fontSize: 10,
-                                                  fontWeight: FontWeight.bold,
-                                                  letterSpacing: 0.8,
-                                                ),
-                                              ),
-                                              Container(
-                                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                                decoration: BoxDecoration(
-                                                  color: const Color(0xFFE48629).withOpacity(0.2),
-                                                  borderRadius: BorderRadius.circular(12),
-                                                ),
-                                                child: Text(
-                                                  'Payout Ready',
-                                                  style: GoogleFonts.comfortaa(
-                                                    color: const Color(0xFFF8B55B),
-                                                    fontSize: 9,
-                                                    fontWeight: FontWeight.bold,
-                                                  ),
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                          const Gap(10),
-                                          Text(
-                                            (revenue * 0.85).formatAsPrice(storeCurrency),
-                                            style: GoogleFonts.comfortaa(
-                                              color: Colors.white,
-                                              fontSize: 22,
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                          ),
-                                          const Gap(2),
-                                          Text(
-                                            'Available Balance (15% marketplace fee commission deducted)',
-                                            style: TextStyle(
-                                              color: Colors.white.withOpacity(0.55),
-                                              fontSize: 10,
-                                            ),
-                                          ),
-                                          const Gap(12),
-                                          const Divider(color: Colors.white10, height: 1),
-                                          const Gap(12),
-                                          Row(
-                                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                            children: [
-                                              Column(
-                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                              Row(
+                                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                                 children: [
                                                   Text(
-                                                    'Next Scheduled Payout',
-                                                    style: TextStyle(
-                                                      color: Colors.white.withOpacity(0.4),
-                                                      fontSize: 8.5,
+                                                    'AFRIOMARKETS VENDOR WALLET',
+                                                    style: GoogleFonts.comfortaa(
+                                                      color: const Color(0xFFF8B55B),
+                                                      fontSize: 10,
+                                                      fontWeight: FontWeight.bold,
+                                                      letterSpacing: 0.8,
                                                     ),
                                                   ),
-                                                  const Gap(2),
-                                                  Text(
-                                                    'Friday, Aug 7, 2026',
-                                                    style: TextStyle(
-                                                      color: Colors.white.withOpacity(0.85),
-                                                      fontSize: 11,
-                                                      fontWeight: FontWeight.bold,
+                                                  Container(
+                                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                                    decoration: BoxDecoration(
+                                                      color: const Color(0xFFE48629).withOpacity(0.2),
+                                                      borderRadius: BorderRadius.circular(12),
+                                                    ),
+                                                    child: Text(
+                                                      'Tap to Manage ➔',
+                                                      style: GoogleFonts.comfortaa(
+                                                        color: const Color(0xFFF8B55B),
+                                                        fontSize: 9,
+                                                        fontWeight: FontWeight.bold,
+                                                      ),
                                                     ),
                                                   ),
                                                 ],
                                               ),
-                                              ElevatedButton(
-                                                onPressed: () {
-                                                  ScaffoldMessenger.of(context).showSnackBar(
-                                                    const SnackBar(
-                                                      content: Text('Manual payout request received. Processing will take 2-3 business days.'),
-                                                      backgroundColor: Color(0xFF344F16),
-                                                    ),
+                                              const Gap(10),
+                                              Builder(
+                                                builder: (context) {
+                                                  final totalBalanceMap = (_walletData?['total_balance'] as Map<String, dynamic>?) ?? {};
+                                                  final primaryCurrency = totalBalanceMap.containsKey('NGN')
+                                                      ? 'NGN'
+                                                      : (totalBalanceMap.keys.firstOrNull ?? storeCurrency.toUpperCase());
+                                                  final primaryBalance = totalBalanceMap[primaryCurrency] ?? (revenue * 0.85);
+                                                  final otherCurrencies = totalBalanceMap.keys.where((c) => c != primaryCurrency).toList();
+
+                                                  return Column(
+                                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                                    children: [
+                                                      Text(
+                                                        '${_formatCurrency(primaryCurrency)}${primaryBalance is num ? primaryBalance.toStringAsFixed(2) : primaryBalance.toString()} $primaryCurrency',
+                                                        style: GoogleFonts.comfortaa(
+                                                          color: Colors.white,
+                                                          fontSize: 22,
+                                                          fontWeight: FontWeight.bold,
+                                                        ),
+                                                      ),
+                                                      if (otherCurrencies.isNotEmpty) ...[
+                                                        const Gap(6),
+                                                        Wrap(
+                                                          spacing: 6,
+                                                          runSpacing: 4,
+                                                          children: otherCurrencies.map((c) {
+                                                            final amt = totalBalanceMap[c] ?? 0;
+                                                            return Container(
+                                                              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                                                              decoration: BoxDecoration(
+                                                                color: Colors.white.withOpacity(0.14),
+                                                                borderRadius: BorderRadius.circular(8),
+                                                                border: Border.all(color: Colors.white24, width: 0.8),
+                                                              ),
+                                                              child: Text(
+                                                                '${_formatCurrency(c)}$amt $c',
+                                                                style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w600),
+                                                              ),
+                                                            );
+                                                          }).toList(),
+                                                        ),
+                                                      ],
+                                                    ],
                                                   );
                                                 },
-                                                style: ElevatedButton.styleFrom(
-                                                  backgroundColor: const Color(0xFFE48629),
-                                                  foregroundColor: Colors.white,
-                                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                                                  minimumSize: Size.zero,
-                                                  shape: RoundedRectangleBorder(
-                                                    borderRadius: BorderRadius.circular(8),
-                                                  ),
-                                                  elevation: 0,
+                                              ),
+                                              const Gap(2),
+                                              Text(
+                                                _bankAccount != null
+                                                    ? 'Payout Destination: ${_bankAccount!['bank_name'] ?? ''} (${_bankAccount!['account_number'] ?? ''})'
+                                                    : 'Available Balance • Tap to setup bank account',
+                                                style: TextStyle(
+                                                  color: Colors.white.withOpacity(0.65),
+                                                  fontSize: 10,
                                                 ),
-                                                child: Text(
-                                                  'Request Payout',
-                                                  style: GoogleFonts.comfortaa(
-                                                    fontSize: 10,
-                                                    fontWeight: FontWeight.bold,
+                                              ),
+                                              const Gap(12),
+                                              const Divider(color: Colors.white10, height: 1),
+                                              const Gap(12),
+                                              Row(
+                                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                children: [
+                                                  Column(
+                                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                                    children: [
+                                                      Text(
+                                                        'Settlement Mode',
+                                                        style: TextStyle(
+                                                          color: Colors.white.withOpacity(0.4),
+                                                          fontSize: 8.5,
+                                                        ),
+                                                      ),
+                                                      const Gap(2),
+                                                      Text(
+                                                        _bankAccount != null ? 'Automated & On-Demand' : 'Pending Bank Setup',
+                                                        style: TextStyle(
+                                                          color: Colors.white.withOpacity(0.85),
+                                                          fontSize: 11,
+                                                          fontWeight: FontWeight.bold,
+                                                        ),
+                                                      ),
+                                                    ],
                                                   ),
-                                                ),
+                                                  ElevatedButton(
+                                                    onPressed: () => context.pushRoute(const VendorWalletRoute()),
+                                                    style: ElevatedButton.styleFrom(
+                                                      backgroundColor: const Color(0xFFE48629),
+                                                      foregroundColor: Colors.white,
+                                                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                                                      minimumSize: Size.zero,
+                                                      shape: RoundedRectangleBorder(
+                                                        borderRadius: BorderRadius.circular(8),
+                                                      ),
+                                                      elevation: 0,
+                                                    ),
+                                                    child: Text(
+                                                      'Request Payout',
+                                                      style: GoogleFonts.comfortaa(
+                                                        fontSize: 10,
+                                                        fontWeight: FontWeight.bold,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ],
                                               ),
                                             ],
                                           ),
-                                        ],
-                                      ),
+                                        ),
+                                      ],
                                     ),
-                                  ],
+                                  ),
                                 ),
                               ),
 
@@ -445,6 +523,13 @@ class _DashboardOverviewViewState extends State<DashboardOverviewView> {
                                 scrollDirection: Axis.horizontal,
                                 child: Row(
                                   children: [
+                                    _buildQuickActionBtn(
+                                      label: 'Vendor Wallet',
+                                      icon: Icons.account_balance_wallet_outlined,
+                                      color: const Color(0xFF2C3E1B),
+                                      onTap: () => context.pushRoute(const VendorWalletRoute()),
+                                    ),
+                                    const Gap(12),
                                     _buildQuickActionBtn(
                                       label: 'Add Product',
                                       icon: Icons.add_photo_alternate_outlined,

@@ -1,3 +1,4 @@
+import 'package:medusa_admin/src/features/auth/presentation/bloc/authentication/authentication_bloc.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart' as f;
 
@@ -88,27 +89,14 @@ abstract class MedusaAdminDi {
       } catch (_) {}
       handler.next(options);
     },
-    // onError: (DioException e, handler) async {
-    //   if (e.response?.statusCode != 401) {
-    //     handler.next(e);
-    //     return;
-    //   }
-    //   final secureStorage = getIt<FlutterSecureStorage>();
-    //   final authType = AuthPreferenceService.authTypeGetter;
-    //   // try {
-    //   //   AuthPreferenceService.instance.setIsAuthenticated(false);
-    //   //   if (authType == AuthenticationType.cookie) {
-    //   //     await secureStorage.delete(key: AppConstants.cookieKey);
-    //   //   }
-    //   //   // if(authType == AuthenticationType.token && e.requestOptions.path.endsWith('/auth')){
-    //   //   //   await secureStorage.delete(key: AppConstants.tokenKey);
-    //   //   // }
-    //   //   if (authType == AuthenticationType.jwt) {
-    //   //     await secureStorage.delete(key: AppConstants.jwtKey);
-    //   //   }
-    //   // } catch (_) {}
-    //   handler.next(e);
-    // },
+    onError: (DioException e, handler) async {
+      if (e.response?.statusCode == 401 && !e.requestOptions.path.contains('/auth')) {
+        try {
+          AuthenticationBloc.instance.add(const AuthenticationEvent.logOut());
+        } catch (_) {}
+      }
+      handler.next(e);
+    },
   );
 
   // static final Interceptor contentTypeInterceptor = InterceptorsWrapper(

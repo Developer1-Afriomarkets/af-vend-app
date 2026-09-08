@@ -18,7 +18,7 @@ extension SnackBarExtension on BuildContext {
         duration: duration,
         showCloseIcon: true,
         dismissDirection: DismissDirection.vertical,
-        behavior: style ?? SnackBarBehavior.floating,
+        behavior: style ?? SnackBarBehavior.fixed,
       ),
     );
   }
@@ -48,7 +48,7 @@ extension SnackBarExtension on BuildContext {
         duration: duration,
         showCloseIcon: true,
         dismissDirection: DismissDirection.vertical,
-        behavior: style ?? SnackBarBehavior.floating,
+        behavior: style ?? SnackBarBehavior.fixed,
       ),
     );
   }

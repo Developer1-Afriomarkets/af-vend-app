@@ -1,3 +1,4 @@
+import 'package:medusa_admin/src/core/extensions/snack_bar_extension.dart';
 import 'package:auto_route/auto_route.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -76,13 +77,14 @@ class _CurrenciesViewState extends State<CurrenciesView> {
       listener: (context, state) {
         state.maybeWhen(
           loading: () => loading(),
-          // loaded: (_) {
-          //   dismissLoading();
-          //   context.maybePop();
-          // },
-          error: (_) {
+          store: (_) {
             dismissLoading();
-            // context.showSnackBar(_.failure.toSnackBarString());
+            context.showSnackBar('Currencies updated successfully');
+            context.maybePop();
+          },
+          error: (e) {
+            dismissLoading();
+            context.showSnackBar(e.toSnackBarString());
           },
           orElse: () => dismissLoading(),
         );
@@ -91,33 +93,39 @@ class _CurrenciesViewState extends State<CurrenciesView> {
         return HideKeyboard(
           child: Scaffold(
             appBar: AppBar(
+              leading: IconButton(
+                icon: const Icon(Icons.arrow_back),
+                onPressed: () async {
+                  final popped = await context.maybePop();
+                  if (!popped && context.mounted) {
+                    Navigator.of(context).maybePop();
+                  }
+                },
+              ),
               systemOverlayStyle: context.defaultSystemUiOverlayStyle,
               title: const Text('Currencies'),
               actions: [
                 TextButton(
                     onPressed: () async {
-                      // final sameCurrencies = listEquals(
-                      //     currencies.map((e) => e.code).toList(),
-                      //     state
-                      //         .mapOrNull(loaded: (_) => _.store.currencies)
-                      //         ?.map((e) => e.code)
-                      //         .toList());
-                      // if (sameCurrencies &&
-                      //     defaultStoreCurrency?.code ==
-                      //         state
-                      //             .mapOrNull(
-                      //                 loaded: (_) => _.store.defaultCurrency)
-                      //             ?.code) {
-                      //   context.maybePop();
-                      //   return;
-                      // }
-                      // List<String> currenciesIsoCode = [];
-                      // for (var currency in currencies) {
-                      //   currenciesIsoCode.add(currency.code);
-                      // }
-                      // storeBloc.add(StoreEvent.updateStore(StorePostReq(
-                      //     defaultCurrencyCode: defaultStoreCurrency?.code,
-                      //     currencies: currenciesIsoCode)));
+                      if (store == null) return;
+                      final storeCurrencies = currencies.map((c) {
+                        final isDefault = c.code?.toLowerCase() == defaultStoreCurrency?.code?.toLowerCase();
+                        return StoreCurrency(
+                          id: 'curr_${store!.id}_${c.code}',
+                          currencyCode: c.code ?? '',
+                          storeId: store!.id,
+                          isDefault: isDefault,
+                          currency: c,
+                        );
+                      }).toList();
+                      storeBloc.add(
+                        StoreEvent.updateStore(
+                          store!.id,
+                          UpdateStoreReq(
+                            supportedCurrencies: storeCurrencies,
+                          ),
+                        ),
+                      );
                     },
                     child: const Text('Save')),
               ],

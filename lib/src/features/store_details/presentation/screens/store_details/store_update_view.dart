@@ -29,7 +29,50 @@ class _StoreUpdateViewState extends State<StoreUpdateView> {
   Region? defaultRegion;
   final _formKey = GlobalKey<FormState>();
 
-  List<StoreCurrency> get currencies => widget.store.supportedCurrencies ?? [];
+  String get defaultCurrencyCode =>
+      widget.store.supportedCurrencies
+          ?.where((c) => c.isDefault)
+          .firstOrNull
+          ?.currencyCode
+          .toLowerCase() ??
+      widget.store.supportedCurrencies?.firstOrNull?.currencyCode.toLowerCase() ??
+      'usd';
+
+  List<StoreCurrency> get currencies {
+    final supported = widget.store.supportedCurrencies ?? [];
+    final currentCodes = supported.map((c) => c.currencyCode.toLowerCase()).toSet();
+    final list = List<StoreCurrency>.from(supported);
+
+    final standardCurrencies = [
+      {'code': 'usd', 'name': 'US Dollar', 'symbol': r'$'},
+      {'code': 'ngn', 'name': 'Nigerian Naira', 'symbol': '₦'},
+      {'code': 'eur', 'name': 'Euro', 'symbol': '€'},
+      {'code': 'gbp', 'name': 'British Pound', 'symbol': '£'},
+      {'code': 'ghs', 'name': 'Ghanaian Cedi', 'symbol': 'GH₵'},
+      {'code': 'cad', 'name': 'Canadian Dollar', 'symbol': r'$'},
+    ];
+
+    final defaultCode = defaultCurrencyCode;
+
+    for (final sc in standardCurrencies) {
+      final code = sc['code']!;
+      if (!currentCodes.contains(code)) {
+        list.add(StoreCurrency(
+          id: 'curr_${widget.store.id}_$code',
+          currencyCode: code,
+          storeId: widget.store.id,
+          isDefault: code == defaultCode,
+          currency: Currency(
+            code: code,
+            name: sc['name'],
+            symbol: sc['symbol'],
+            symbolNative: sc['symbol'],
+          ),
+        ));
+      }
+    }
+    return list;
+  }
 
   String? get defaultRegionId => widget.store.defaultRegionId;
 
@@ -83,14 +126,22 @@ class _StoreUpdateViewState extends State<StoreUpdateView> {
                   if (_formKey.currentState?.validate() != true) {
                     return;
                   }
-                  var storeCurrencies = List<StoreCurrency>.from(currencies);
-                  if (defaultCurrency != null) {
-                    for (var i = 0; i < storeCurrencies.length; i++) {
-                      var currency = storeCurrencies[i];
-                      storeCurrencies[i] = currency.copyWith(
-                          isDefault: currency.currencyCode == defaultCurrency!.currencyCode);
+                  final activeCurrencies = currencies;
+                  final selectedDefault = defaultCurrency ??
+                      activeCurrencies.where((c) => c.currencyCode.toLowerCase() == defaultCurrencyCode).firstOrNull ??
+                      activeCurrencies.where((c) => c.isDefault).firstOrNull ??
+                      activeCurrencies.firstOrNull;
+
+                  final storeCurrencies = <StoreCurrency>[];
+                  if (selectedDefault != null) {
+                    storeCurrencies.add(selectedDefault.copyWith(isDefault: true));
+                  }
+                  for (final sc in (widget.store.supportedCurrencies ?? [])) {
+                    if (sc.currencyCode.toLowerCase() != selectedDefault?.currencyCode.toLowerCase()) {
+                      storeCurrencies.add(sc.copyWith(isDefault: false));
                     }
                   }
+
                   _storeBloc.add(
                     StoreEvent.updateStore(
                       widget.store.id,
@@ -121,9 +172,15 @@ class _StoreUpdateViewState extends State<StoreUpdateView> {
                 ),
                 const Gap(10),
                 DropdownMenuFormField<StoreCurrency>(
-                    label: Text('Default currency'),
+                    label: const Text('Default currency'),
                     width: double.maxFinite,
-                    initialSelection: currencies.singleWhere((currency) => currency.isDefault),
+                    initialSelection: currencies.where((currency) =>
+                        currency.currencyCode.toLowerCase() == defaultCurrencyCode).firstOrNull ??
+                        currencies.where((currency) => currency.isDefault).firstOrNull ??
+                        currencies.firstOrNull,
+                    onSelected: (value) {
+                      defaultCurrency = value;
+                    },
                     onSaved: (value) {
                       defaultCurrency = value;
                     },
@@ -132,7 +189,7 @@ class _StoreUpdateViewState extends State<StoreUpdateView> {
                           (storeCurrency) =>
                           DropdownMenuEntry<StoreCurrency>(
                             value: storeCurrency,
-                            label: storeCurrency.currencyCode.capitalize,
+                            label: '${storeCurrency.currencyCode.toUpperCase()} - ${storeCurrency.currency?.name ?? storeCurrency.currencyCode.capitalize}',
                           ),
                     )
                         .toList()),

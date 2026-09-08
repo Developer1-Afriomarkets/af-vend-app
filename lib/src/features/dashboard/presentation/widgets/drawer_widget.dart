@@ -430,6 +430,7 @@ void _signOut(BuildContext context) async {
     (value) async {
       if (value == OkCancelResult.ok && context.mounted) {
         context.read<AuthenticationBloc>().add(const AuthenticationEvent.logOut());
+        if (context.mounted) { context.router.replaceAll([const AuthenticationRoute()]); }
       }
     },
   );

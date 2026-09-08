@@ -40,5 +40,6 @@ class AppConstants {
 
   // Change this to your backend url
   // This is optional since you can easily change it from the app
-  static const String baseUrl = 'https://eke.afriomarkets.com';
+    static const String baseUrl = 'https://eke.afriomarkets.com';
+  // static const String baseUrl = 'http://localhost:9000';
 }

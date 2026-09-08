@@ -1,3 +1,4 @@
+import 'package:medusa_admin/src/core/routing/app_router.dart';
 import 'package:adaptive_dialog/adaptive_dialog.dart';
 import 'package:auto_route/auto_route.dart';
 import 'package:flex_expansion_tile/flex_expansion_tile.dart';
@@ -43,8 +44,10 @@ class _StoreDetailsViewState extends State<StoreDetailsView> {
       context.maybePop();
       return;
     }
-    final currencyCodes = store.supportedCurrencies?.map((e) => e.currency.code).toList() ?? [];
-    //for every currency code in currencyCodes create a map with key 'code' and value the currency code
+    final currencyCodes = store.supportedCurrencies?.map((e) => e.currencyCode).toList() ?? [];
+    if (currencyCodes.isEmpty) {
+      currencyCodes.add('usd');
+    }
     final queryParameters =
         currencyCodes.asMap().map((key, value) => MapEntry('code[$key]', value));
 
@@ -99,6 +102,15 @@ class _StoreDetailsViewState extends State<StoreDetailsView> {
           return HideKeyboard(
             child: Scaffold(
               appBar: AppBar(
+                leading: IconButton(
+                  icon: const Icon(Icons.arrow_back),
+                  onPressed: () async {
+                    final popped = await context.maybePop();
+                    if (!popped && context.mounted) {
+                      Navigator.of(context).maybePop();
+                    }
+                  },
+                ),
                 systemOverlayStyle: context.defaultSystemUiOverlayStyle,
                 title: Text(store?.name ?? 'Store Details'),
               ),
@@ -183,6 +195,7 @@ class _StoreDetailsViewState extends State<StoreDetailsView> {
                                         .firstOrNull
                                         ?.currency
                                         .name ??
+                                    store?.supportedCurrencies?.firstOrNull?.currency.name ??
                                     '-'),
                               ],
                             ),
@@ -215,6 +228,16 @@ class _StoreDetailsViewState extends State<StoreDetailsView> {
                     space,
                     FlexExpansionTile(
                       initiallyExpanded: true,
+                      trailing: TextButton.icon(
+                        onPressed: () async {
+                          await context.pushRoute(const CurrenciesRoute());
+                          if (context.mounted) {
+                            context.read<StoreBloc>().add(const StoreEvent.loadStores(null));
+                          }
+                        },
+                        icon: const Icon(LucideIcons.coins),
+                        label: const Text('Manage'),
+                      ),
                       title: const Text('Currencies'),
                       childPadding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 10.0),
                       child: BlocBuilder<CurrenciesCubit, CurrenciesState>(
@@ -223,55 +246,74 @@ class _StoreDetailsViewState extends State<StoreDetailsView> {
                             return state.maybeWhen(
                               loading: () => const Center(child: CircularProgressIndicator()),
                               currencies: (currencies, _) {
+                                if (currencies.isEmpty) {
+                                  return Padding(
+                                    padding: const EdgeInsets.symmetric(vertical: 8.0),
+                                    child: Text(
+                                      'No currencies configured. Tap "Manage" above to add currencies.',
+                                      style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey),
+                                    ),
+                                  );
+                                }
                                 return Column(
-                                  children: currencies.map((currency) {
-                                    return Padding(
-                                      padding: const EdgeInsets.only(bottom: 10.0),
-                                      child: InkWell(
-                                        borderRadius: const BorderRadius.all(Radius.circular(12.0)),
-                                        onTap: () {
-                                          final isSelected = selectedCurrencies.contains(currency);
-                                          if (isSelected) {
-                                            selectedCurrencies.removeWhere(
-                                                (element) => element.code == currency.code);
-                                          } else {
-                                            selectedCurrencies.add(currency);
-                                          }
-                                          setState(() {});
-                                        },
-                                        child: Ink(
-                                          padding: const EdgeInsets.all(12.0),
-                                          decoration: BoxDecoration(
-                                            borderRadius:
-                                                const BorderRadius.all(Radius.circular(12.0)),
-                                            color: Theme.of(context).scaffoldBackgroundColor,
-                                          ),
-                                          child: Row(
-                                            children: [
-                                              Checkbox(
-                                                visualDensity: VisualDensity.compact,
-                                                materialTapTargetSize:
-                                                    MaterialTapTargetSize.shrinkWrap,
-                                                value: selectedCurrencies.contains(currency),
-                                                onChanged: (value) {
-                                                  if (value == null) return;
-                                                  if (!value) {
-                                                    selectedCurrencies.removeWhere(
-                                                        (element) => element.code == currency.code);
-                                                  } else {
-                                                    selectedCurrencies.add(currency);
-                                                  }
-                                                  setState(() {});
-                                                },
-                                              ),
-                                              const Gap(5),
-                                              Text('${currency.name} (${currency.code})'),
-                                            ],
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Padding(
+                                      padding: const EdgeInsets.only(bottom: 8.0),
+                                      child: Text(
+                                        'Select currencies below to remove from store:',
+                                        style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey),
+                                      ),
+                                    ),
+                                    ...currencies.map((currency) {
+                                      return Padding(
+                                        padding: const EdgeInsets.only(bottom: 10.0),
+                                        child: InkWell(
+                                          borderRadius: const BorderRadius.all(Radius.circular(12.0)),
+                                          onTap: () {
+                                            final isSelected = selectedCurrencies.contains(currency);
+                                            if (isSelected) {
+                                              selectedCurrencies.removeWhere(
+                                                  (element) => element.code == currency.code);
+                                            } else {
+                                              selectedCurrencies.add(currency);
+                                            }
+                                            setState(() {});
+                                          },
+                                          child: Ink(
+                                            padding: const EdgeInsets.all(12.0),
+                                            decoration: BoxDecoration(
+                                              borderRadius:
+                                                  const BorderRadius.all(Radius.circular(12.0)),
+                                              color: Theme.of(context).scaffoldBackgroundColor,
+                                            ),
+                                            child: Row(
+                                              children: [
+                                                Checkbox(
+                                                  visualDensity: VisualDensity.compact,
+                                                  materialTapTargetSize:
+                                                      MaterialTapTargetSize.shrinkWrap,
+                                                  value: selectedCurrencies.contains(currency),
+                                                  onChanged: (value) {
+                                                    if (value == null) return;
+                                                    if (!value) {
+                                                      selectedCurrencies.removeWhere(
+                                                          (element) => element.code == currency.code);
+                                                    } else {
+                                                      selectedCurrencies.add(currency);
+                                                    }
+                                                    setState(() {});
+                                                  },
+                                                ),
+                                                const Gap(5),
+                                                Text('${currency.name} (${currency.code})'),
+                                              ],
+                                            ),
                                           ),
                                         ),
-                                      ),
-                                    );
-                                  }).toList(),
+                                      );
+                                    }).toList(),
+                                  ],
                                 );
                               },
                               error: (e) => Text(e.toSnackBarString()),

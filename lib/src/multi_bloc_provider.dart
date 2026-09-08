@@ -12,6 +12,7 @@ import 'features/auth/presentation/bloc/authentication/authentication_bloc.dart'
 import 'features/customers/presentation/bloc/customer_crud/customer_crud_bloc.dart';
 import 'features/app_settings/presentation/cubits/language/language_cubit.dart';
 import 'features/app_settings/presentation/cubits/theme/theme_cubit.dart';
+import 'package:medusa_admin/src/features/team/presentation/bloc/user_crud/user_crud_bloc.dart';
 
 class CustomMultiBlocProvider extends StatelessWidget {
   const CustomMultiBlocProvider({required this.child, super.key});
@@ -34,6 +35,9 @@ class CustomMultiBlocProvider extends StatelessWidget {
       BlocProvider<AppUpdateBloc>(
         create: (_) => AppUpdateBloc.instance,
         lazy: false,
+      ),
+      BlocProvider<UserCrudBloc>(
+        create: (_) => UserCrudBloc.instance..add(const UserCrudEvent.loadCurrentUser()),
       ),
       BlocProvider<StoreBloc>(
         create: (_) => StoreBloc.instance..add(StoreEvent.loadStores(null)),

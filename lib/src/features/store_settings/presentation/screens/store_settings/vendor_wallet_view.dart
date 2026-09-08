@@ -5,10 +5,8 @@ import 'package:dio/dio.dart';
 import 'package:gap/gap.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:medusa_admin/src/core/di/di.dart';
-import 'package:medusa_admin/src/core/extensions/context_extension.dart';
 import 'package:medusa_admin/src/core/extensions/snack_bar_extension.dart';
 import 'package:medusa_admin/src/core/utils/easy_loading.dart';
-import 'package:medusa_admin_dart_client/medusa_admin_dart_client_v2.dart';
 
 @RoutePage()
 class VendorWalletView extends StatefulWidget {
@@ -19,6 +17,20 @@ class VendorWalletView extends StatefulWidget {
 }
 
 class _VendorWalletViewState extends State<VendorWalletView> with SingleTickerProviderStateMixin {
+  String _getCurrencySymbol(String? code) {
+    if (code == null) return '₦';
+    switch (code.toUpperCase()) {
+      case 'NGN': return '₦';
+      case 'USD': return r'$';
+      case 'EUR': return '€';
+      case 'GBP': return '£';
+      case 'GHS': return 'GH₵';
+      case 'CAD': return r'CA$';
+      case 'AUD': return r'AU$';
+      default: return '${code.toUpperCase()} ';
+    }
+  }
+
   late TabController _tabController;
   bool _isLoading = true;
 
@@ -222,45 +234,80 @@ class _VendorWalletViewState extends State<VendorWalletView> with SingleTickerPr
     }
     await _requestOtp('payout_request');
 
+    final wallet = _walletData?['wallet'] as Map<String, dynamic>?;
+    final totalBalanceMap = (wallet?['total_balance'] as Map<String, dynamic>?) ?? {};
+    final availableCurrencies = <String>[];
+    for (final key in totalBalanceMap.keys) {
+      final k = key.toString().toUpperCase();
+      if (!availableCurrencies.contains(k)) availableCurrencies.add(k);
+    }
+    if (availableCurrencies.isEmpty) availableCurrencies.addAll(['NGN', 'USD']);
+    String selectedCurrency = availableCurrencies.contains('NGN') ? 'NGN' : availableCurrencies.first;
+
     final otpCtrl = TextEditingController();
     _payoutAmountCtrl.clear();
     if (!mounted) return;
 
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Request Payout Withdrawal'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Payout Bank: ${_bankAccount?['bank_name'] ?? ''} (${_bankAccount?['account_number'] ?? ''})'),
-            const Gap(12),
-            TextField(
-              controller: _payoutAmountCtrl,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: InputDecoration(
-                labelText: 'Amount (NGN)',
-                hintText: 'e.g. 50000',
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+      builder: (dialogCtx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('Request Payout Withdrawal'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Payout Bank: ${_bankAccount?['bank_name'] ?? ''} (${_bankAccount?['account_number'] ?? ''})'),
+              const Gap(12),
+              if (availableCurrencies.length > 1) ...[
+                DropdownButtonFormField<String>(
+                  value: selectedCurrency,
+                  isExpanded: true,
+                  decoration: InputDecoration(
+                    labelText: 'Select Payout Currency',
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  ),
+                  items: availableCurrencies.map((c) {
+                    final bal = totalBalanceMap[c] ?? 0;
+                    return DropdownMenuItem(
+                      value: c,
+                      child: Text('$c (${_getCurrencySymbol(c)}$bal available)'),
+                    );
+                  }).toList(),
+                  onChanged: (val) {
+                    if (val != null) setDialogState(() => selectedCurrency = val);
+                  },
+                ),
+                const Gap(12),
+              ],
+              TextField(
+                controller: _payoutAmountCtrl,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: InputDecoration(
+                  labelText: 'Amount ($selectedCurrency)',
+                  hintText: 'e.g. 50000',
+                  prefixText: _getCurrencySymbol(selectedCurrency),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                ),
               ),
-            ),
-            const Gap(12),
-            TextField(
-              controller: otpCtrl,
-              keyboardType: TextInputType.number,
-              decoration: InputDecoration(
-                labelText: 'Enter 6-Digit OTP',
-                hintText: '123456',
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+              const Gap(12),
+              TextField(
+                controller: otpCtrl,
+                keyboardType: TextInputType.number,
+                decoration: InputDecoration(
+                  labelText: 'Enter 6-Digit OTP',
+                  hintText: '123456',
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                ),
               ),
-            ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.of(dialogCtx).pop(false), child: const Text('Cancel')),
+            ElevatedButton(onPressed: () => Navigator.of(dialogCtx).pop(true), child: const Text('Submit Payout')),
           ],
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancel')),
-          ElevatedButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Submit Payout')),
-        ],
       ),
     );
 
@@ -270,7 +317,7 @@ class _VendorWalletViewState extends State<VendorWalletView> with SingleTickerPr
         final dio = getIt<Dio>();
         final res = await dio.post('/admin/vendor/payout/request', data: {
           'amount': double.tryParse(_payoutAmountCtrl.text.trim()) ?? 0,
-          'currency': 'ngn',
+          'currency': selectedCurrency.toLowerCase(),
           'otp_code': otpCtrl.text.trim(),
         });
         dismissLoading();
@@ -293,15 +340,58 @@ class _VendorWalletViewState extends State<VendorWalletView> with SingleTickerPr
 
     return Scaffold(
       appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () async {
+            final popped = await context.maybePop();
+            if (!popped && context.mounted) {
+              Navigator.of(context).maybePop();
+            }
+          },
+        ),
         title: const Text('Vendor Wallet & Payouts'),
         elevation: 0,
-        bottom: TabBar(
-          controller: _tabController,
-          tabs: const [
-            Tab(icon: Icon(LucideIcons.wallet, size: 18), text: 'Overview'),
-            Tab(icon: Icon(LucideIcons.landmark, size: 18), text: 'Bank Account'),
-            Tab(icon: Icon(LucideIcons.history, size: 18), text: 'Payouts'),
-          ],
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(54),
+          child: Container(
+            height: 44,
+            margin: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 5.0),
+            decoration: BoxDecoration(
+              color: isDark ? Colors.white.withOpacity(0.08) : Colors.black.withOpacity(0.05),
+              borderRadius: BorderRadius.circular(14.0),
+            ),
+            child: TabBar(
+              controller: _tabController,
+              indicator: BoxDecoration(
+                borderRadius: BorderRadius.circular(12.0),
+                color: const Color(0xFFE48629),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFFE48629).withOpacity(0.35),
+                    blurRadius: 6,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              indicatorSize: TabBarIndicatorSize.tab,
+              labelColor: Colors.white,
+              unselectedLabelColor: isDark ? Colors.white70 : Colors.black87,
+              labelStyle: const TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 13.0,
+                letterSpacing: -0.2,
+              ),
+              unselectedLabelStyle: const TextStyle(
+                fontWeight: FontWeight.w500,
+                fontSize: 13.0,
+              ),
+              tabs: const [
+                Tab(icon: Icon(LucideIcons.wallet, size: 16), text: 'Overview'),
+                Tab(icon: Icon(LucideIcons.landmark, size: 16), text: 'Bank Account'),
+                Tab(icon: Icon(LucideIcons.history, size: 16), text: 'Payouts'),
+              ],
+            ),
+          ),
         ),
       ),
       body: _isLoading
@@ -322,9 +412,10 @@ class _VendorWalletViewState extends State<VendorWalletView> with SingleTickerPr
 
   Widget _buildOverviewTab(bool isDark) {
     final wallet = _walletData?['wallet'] as Map<String, dynamic>?;
-    final totalBalanceMap = wallet?['total_balance'] as Map<String, dynamic>? ?? {};
-    final ngnBalance = totalBalanceMap['NGN'] ?? 0;
-    final usdBalance = totalBalanceMap['USD'] ?? 0;
+    final totalBalanceMap = (wallet?['total_balance'] as Map<String, dynamic>?) ?? {};
+    final primaryCurrency = totalBalanceMap.containsKey('NGN') ? 'NGN' : (totalBalanceMap.keys.firstOrNull ?? 'NGN');
+    final primaryBalance = totalBalanceMap[primaryCurrency] ?? 0;
+    final otherCurrencies = totalBalanceMap.keys.where((c) => c != primaryCurrency).toList();
 
     return ListView(
       padding: const EdgeInsets.all(16.0),
@@ -365,12 +456,30 @@ class _VendorWalletViewState extends State<VendorWalletView> with SingleTickerPr
               ),
               const Gap(8),
               Text(
-                '₦${ngnBalance.toString()}',
-                style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold),
+                '${_getCurrencySymbol(primaryCurrency)}${primaryBalance.toString()} $primaryCurrency',
+                style: const TextStyle(color: Colors.white, fontSize: 30, fontWeight: FontWeight.bold),
               ),
-              if (usdBalance != 0) ...[
-                const Gap(4),
-                Text('\$${usdBalance.toString()} USD', style: const TextStyle(color: Colors.white70, fontSize: 14)),
+              if (otherCurrencies.isNotEmpty) ...[
+                const Gap(8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
+                  children: otherCurrencies.map((c) {
+                    final amt = totalBalanceMap[c] ?? 0;
+                    return Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.18),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: Colors.white24),
+                      ),
+                      child: Text(
+                        '${_getCurrencySymbol(c)}$amt $c',
+                        style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                      ),
+                    );
+                  }).toList(),
+                ),
               ],
               const Gap(16),
               Row(
@@ -454,7 +563,7 @@ class _VendorWalletViewState extends State<VendorWalletView> with SingleTickerPr
                     children: [
                       const Icon(LucideIcons.checkCircle2, color: Colors.green, size: 20),
                       const Gap(8),
-                      const Text('Configured Business Payout Account', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                      const Expanded(child: Text('Configured Business Payout Account', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15), overflow: TextOverflow.ellipsis)),
                     ],
                   ),
                   const Divider(height: 20),
@@ -481,6 +590,7 @@ class _VendorWalletViewState extends State<VendorWalletView> with SingleTickerPr
           const CircularProgressIndicator()
         else
           DropdownButtonFormField<String>(
+            isExpanded: true,
             value: _selectedBankCode,
             decoration: InputDecoration(
               labelText: 'Select Bank',
@@ -490,7 +600,7 @@ class _VendorWalletViewState extends State<VendorWalletView> with SingleTickerPr
             items: _banks.map((b) {
               return DropdownMenuItem<String>(
                 value: b['code']?.toString(),
-                child: Text(b['name']?.toString() ?? ''),
+                child: Text(b['name']?.toString() ?? '', overflow: TextOverflow.ellipsis),
               );
             }).toList(),
             onChanged: (val) {
@@ -567,7 +677,8 @@ class _VendorWalletViewState extends State<VendorWalletView> with SingleTickerPr
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const Text('Payout Requests & Settlements', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            const Expanded(child: Text('Payout Requests & Settlements', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis)),
+            const Gap(8),
             OutlinedButton.icon(
               onPressed: _showPayoutRequestDialog,
               icon: const Icon(LucideIcons.plus, size: 16),
@@ -599,7 +710,7 @@ class _VendorWalletViewState extends State<VendorWalletView> with SingleTickerPr
                     size: 20,
                   ),
                 ),
-                title: Text('₦$amount NGN Withdrawal', style: const TextStyle(fontWeight: FontWeight.bold)),
+                title: Text('${_getCurrencySymbol(payout["currency"]?.toString())}$amount ${(payout["currency"] ?? "NGN").toString().toUpperCase()} Withdrawal', style: const TextStyle(fontWeight: FontWeight.bold)),
                 subtitle: Text('Requested: ${payout['created_at']?.toString().split('T').first ?? ''}'),
                 trailing: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),

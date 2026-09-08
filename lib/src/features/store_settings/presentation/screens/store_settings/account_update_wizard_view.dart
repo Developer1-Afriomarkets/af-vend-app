@@ -5,7 +5,6 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:gap/gap.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:medusa_admin/src/core/di/di.dart';
-import 'package:medusa_admin/src/core/extensions/context_extension.dart';
 import 'package:medusa_admin/src/core/extensions/snack_bar_extension.dart';
 import 'package:medusa_admin/src/core/utils/easy_loading.dart';
 import 'package:medusa_admin/src/features/store_details/presentation/bloc/store/store_bloc.dart';
@@ -283,6 +282,15 @@ class _AccountUpdateWizardViewState extends State<AccountUpdateWizardView> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () async {
+            final popped = await context.maybePop();
+            if (!popped && context.mounted) {
+              Navigator.of(context).maybePop();
+            }
+          },
+        ),
         title: const Text('Store & Profile Wizard'),
         elevation: 0,
       ),

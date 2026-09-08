@@ -184,10 +184,68 @@ class MedusaV1ResponseTransformer extends Interceptor {
     }
 
     // Rewrites for V1 Store endpoints (V2 calls /admin/stores plural)
-    if (path == '/admin/stores' ||
+    if (path == '/admin/store' ||
+        path == '/admin/stores' ||
+        path.startsWith('/admin/store?') ||
         path.startsWith('/admin/stores?') ||
+        path.startsWith('/admin/store/') ||
         path.startsWith('/admin/stores/')) {
       options.path = '/admin/store';
+      if (options.method == 'POST' && options.data is Map) {
+        final data = Map<String, dynamic>.from(options.data as Map);
+        final v1Payload = <String, dynamic>{};
+        if (data.containsKey('name')) {
+          v1Payload['name'] = data['name'];
+        }
+
+        // Extract default currency and currencies list from supported_currencies
+        if (data.containsKey('supported_currencies') && data['supported_currencies'] is List) {
+          final scList = data['supported_currencies'] as List;
+          final currencyCodes = <String>[];
+          String? defCode;
+          for (final item in scList) {
+            if (item is Map) {
+              final code = item['currency_code']?.toString().toLowerCase();
+              if (code != null && code.isNotEmpty) {
+                currencyCodes.add(code);
+                if (item['is_default'] == true) {
+                  defCode = code;
+                }
+              }
+            }
+          }
+          if (currencyCodes.isNotEmpty) {
+            v1Payload['currencies'] = currencyCodes;
+          }
+          if (defCode != null) {
+            v1Payload['default_currency_code'] = defCode;
+          }
+        }
+
+        if (data.containsKey('default_currency_code')) {
+          v1Payload['default_currency_code'] = data['default_currency_code'];
+        }
+        if (data.containsKey('currencies') && data['currencies'] is List) {
+          v1Payload['currencies'] = data['currencies'];
+        }
+
+        // Persist default_region_id in store metadata
+        final meta = data.containsKey('metadata') && data['metadata'] is Map
+            ? Map<String, dynamic>.from(data['metadata'] as Map)
+            : <String, dynamic>{};
+        if (data.containsKey('default_region_id') && data['default_region_id'] != null) {
+          meta['default_region_id'] = data['default_region_id'];
+        }
+        if (meta.isNotEmpty) {
+          v1Payload['metadata'] = meta;
+        }
+
+        if (data.containsKey('default_sales_channel_id')) {
+          v1Payload['default_sales_channel_id'] = data['default_sales_channel_id'];
+        }
+
+        options.data = v1Payload;
+      }
     }
 
     // Rewrites for V2 Promotions -> V1 Discounts
@@ -366,7 +424,7 @@ class MedusaV1ResponseTransformer extends Interceptor {
 
   void _handleCurrenciesRequest(
       RequestOptions options, RequestInterceptorHandler handler) {
-    final currencies = [
+    final allCurrencies = [
       {
         'code': 'usd',
         'symbol': '\$',
@@ -423,6 +481,25 @@ class MedusaV1ResponseTransformer extends Interceptor {
         'name': 'Indian Rupee'
       },
     ];
+
+    List<Map<String, dynamic>> currencies = allCurrencies;
+    final hasCodeParam = options.queryParameters.keys.any((k) => k == 'code' || k.startsWith('code[') || k.startsWith('code'));
+    if (hasCodeParam) {
+      final requestedCodes = <String>{};
+      for (final entry in options.queryParameters.entries) {
+        if (entry.key == 'code' || entry.key.startsWith('code[') || entry.key.startsWith('code')) {
+          if (entry.value is List) {
+            requestedCodes.addAll((entry.value as List).map((e) => e.toString().toLowerCase()));
+          } else if (entry.value != null) {
+            requestedCodes.add(entry.value.toString().toLowerCase());
+          }
+        }
+      }
+      currencies = allCurrencies
+          .where((c) => requestedCodes.contains(c['code']?.toString().toLowerCase()))
+          .toList();
+    }
+
     handler.resolve(Response(
       requestOptions: options,
       data: {
@@ -819,11 +896,60 @@ class MedusaV1ResponseTransformer extends Interceptor {
       // Wrap singular store → plural list for V2 client expectations
       if (path.contains('/admin/store')) {
         final store = data['store'];
-        if (store != null && !data.containsKey('stores')) {
-          data['stores'] = [store];
-          data['limit'] = 1;
-          data['offset'] = 0;
-          data['count'] = 1;
+        if (store is Map<String, dynamic>) {
+          // 1. Populate default_region_id from metadata if present
+          if (store['default_region_id'] == null && store['metadata'] is Map) {
+            store['default_region_id'] = store['metadata']['default_region_id'];
+          }
+
+          // 2. Map V1 currencies -> V2 supported_currencies
+          final defaultCurrencyCode = (store['default_currency_code'] ?? 'usd').toString().toLowerCase();
+          final currencies = store['currencies'];
+          if (!store.containsKey('supported_currencies')) {
+            final scList = <Map<String, dynamic>>[];
+            if (currencies is List) {
+              for (final c in currencies) {
+                if (c == null) continue;
+                final code = (c is Map ? c['code'] : c.toString()).toString().toLowerCase();
+                if (code.isEmpty) continue;
+                final isDefault = code == defaultCurrencyCode;
+                scList.add({
+                  'id': 'curr_${store['id']}_$code',
+                  'currency_code': code,
+                  'store_id': store['id'],
+                  'is_default': isDefault,
+                  'currency': c is Map ? c : {
+                    'code': code,
+                    'symbol': code == 'ngn' ? '₦' : (code == 'usd' ? r'$' : code.toUpperCase()),
+                    'name': code.toUpperCase(),
+                    'symbol_native': code == 'ngn' ? '₦' : code.toUpperCase(),
+                  },
+                });
+              }
+            }
+            if (scList.isEmpty && defaultCurrencyCode.isNotEmpty) {
+              scList.add({
+                'id': 'curr_${store['id']}_$defaultCurrencyCode',
+                'currency_code': defaultCurrencyCode,
+                'store_id': store['id'],
+                'is_default': true,
+                'currency': {
+                  'code': defaultCurrencyCode,
+                  'symbol': defaultCurrencyCode == 'ngn' ? '₦' : (defaultCurrencyCode == 'usd' ? r'$' : defaultCurrencyCode.toUpperCase()),
+                  'name': defaultCurrencyCode.toUpperCase(),
+                  'symbol_native': defaultCurrencyCode == 'ngn' ? '₦' : defaultCurrencyCode.toUpperCase(),
+                },
+              });
+            }
+            store['supported_currencies'] = scList;
+          }
+
+          if (!data.containsKey('stores')) {
+            data['stores'] = [store];
+            data['limit'] = 1;
+            data['offset'] = 0;
+            data['count'] = 1;
+          }
         }
       }
 

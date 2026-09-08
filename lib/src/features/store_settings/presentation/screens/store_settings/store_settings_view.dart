@@ -69,6 +69,13 @@ class StoreSettingsView extends StatelessWidget {
                   onTap: () => context.pushRoute(const StoreDetailsRoute()),
                 ),
                 SettingsCardTile(
+                  leadingIcon: LucideIcons.coins,
+                  iconColor: Colors.amber.shade600,
+                  title: 'Currencies',
+                  subtitle: 'Manage store currencies, default store currency, and exchange support',
+                  onTap: () => context.pushRoute(const CurrenciesRoute()),
+                ),
+                SettingsCardTile(
                   leadingIcon: LucideIcons.users,
                   iconColor: Colors.teal.shade600,
                   title: 'Users',
@@ -415,6 +422,7 @@ void _signOut(BuildContext context) async {
     (value) async {
       if (value == OkCancelResult.ok && context.mounted) {
         context.read<AuthenticationBloc>().add(const AuthenticationEvent.logOut());
+        if (context.mounted) { context.router.replaceAll([const AuthenticationRoute()]); }
       }
     },
   );
