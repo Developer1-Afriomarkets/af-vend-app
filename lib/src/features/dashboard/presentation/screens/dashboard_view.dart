@@ -33,8 +33,9 @@ class DashboardView extends StatelessWidget {
         routes: const [
           DashboardOverviewRoute(),
           OrdersRoute(),
-          ProductsRoute(),
           PickupRequestsDeliveriesRoute(),
+          ProductsRoute(),
+          StoreSettingsRoute(),
         ],
         transitionBuilder: (context, child, animation) => child,
         builder: (context, child) {
@@ -108,7 +109,7 @@ class DashboardView extends StatelessWidget {
                     buildTabItem(index: 0, icon: Icons.dashboard_outlined, label: 'Dashboard'),
                     buildTabItem(index: 1, icon: Icons.shopping_bag_outlined, label: 'Orders'),
                     
-                    // Curved center FAB container with donut cutout
+                    // Center elevated Logistics button
                     Container(
                       transform: Matrix4.translationValues(0, -12, 0),
                       width: 56,
@@ -126,16 +127,20 @@ class DashboardView extends StatelessWidget {
                       ),
                       padding: const EdgeInsets.all(4.0),
                       child: FloatingActionButton(
-                        onPressed: () => _showQuickCreateBottomSheet(context),
-                        backgroundColor: const Color(0xFF344F16),
+                        heroTag: 'nav_center_logistics_fab',
+                        onPressed: () => tabsRouter.setActiveIndex(2),
+                        backgroundColor: tabsRouter.activeIndex == 2
+                            ? const Color(0xFFE48629)
+                            : const Color(0xFF344F16),
                         elevation: 3,
                         shape: const CircleBorder(),
-                        child: const Icon(Icons.add, color: Colors.white, size: 24),
+                        tooltip: 'Logistics',
+                        child: const Icon(Icons.local_shipping_rounded, color: Colors.white, size: 24),
                       ),
                     ),
 
-                    buildTabItem(index: 2, icon: Icons.sell_outlined, label: 'Products'),
-                    buildTabItem(index: 3, icon: Icons.local_shipping_outlined, label: 'Logistics'),
+                    buildTabItem(index: 3, icon: Icons.sell_outlined, label: 'Products'),
+                    buildTabItem(index: 4, icon: Icons.settings_outlined, label: 'Settings'),
                   ],
                 ),
               ),
@@ -146,171 +151,4 @@ class DashboardView extends StatelessWidget {
     );
   }
 
-  void _showQuickCreateBottomSheet(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (context) {
-        return Container(
-          decoration: BoxDecoration(
-            color: Theme.of(context).scaffoldBackgroundColor,
-            borderRadius: const BorderRadius.only(
-              topLeft: Radius.circular(24),
-              topRight: Radius.circular(24),
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.2),
-                blurRadius: 20,
-                offset: const Offset(0, -5),
-              ),
-            ],
-          ),
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-          child: SafeArea(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Center(
-                  child: Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade400,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                ),
-                const Gap(20),
-                Text(
-                  'Quick Actions',
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: -0.5,
-                      ),
-                ),
-                const Gap(16),
-                _QuickActionTile(
-                  title: 'Create Product',
-                  subtitle: 'Add a new product to your catalog',
-                  icon: Icons.add_photo_alternate_outlined,
-                  color: const Color(0xFFE48629),
-                  onTap: () {
-                    Navigator.pop(context);
-                    context.pushRoute(AddUpdateProductRoute());
-                  },
-                ),
-                const Gap(12),
-                _QuickActionTile(
-                  title: 'New Pickup Request',
-                  subtitle: 'Request pickup for packaged items',
-                  icon: CupertinoIcons.cube_box,
-                  color: const Color(0xFF344F16),
-                  onTap: () {
-                    Navigator.pop(context);
-                    context.pushRoute(AddUpdatePickupRequestRoute());
-                  },
-                ),
-                const Gap(12),
-                _QuickActionTile(
-                  title: 'New Delivery',
-                  subtitle: 'Create a delivery run for a driver',
-                  icon: Icons.local_shipping_outlined,
-                  color: Colors.blue.shade600,
-                  onTap: () {
-                    Navigator.pop(context);
-                    context.pushRoute(AddUpdateDeliveryRoute());
-                  },
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-}
-
-class _QuickActionTile extends StatelessWidget {
-  const _QuickActionTile({
-    required this.title,
-    required this.subtitle,
-    required this.icon,
-    required this.color,
-    required this.onTap,
-  });
-
-  final String title;
-  final String subtitle;
-  final IconData icon;
-  final Color color;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Container(
-      decoration: BoxDecoration(
-        color: Theme.of(context).cardColor,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: isDark ? Colors.white10 : Colors.black.withOpacity(0.05),
-          width: 1,
-        ),
-      ),
-      child: Material(
-        color: Colors.transparent,
-        borderRadius: BorderRadius.circular(16),
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(16),
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: color.withOpacity(0.12),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
-                    icon,
-                    color: color,
-                    size: 24,
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.bold,
-                            ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        subtitle,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: Colors.grey.shade500,
-                            ),
-                      ),
-                    ],
-                  ),
-                ),
-                Icon(
-                  Icons.chevron_right_rounded,
-                  color: Colors.grey.shade400,
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
 }

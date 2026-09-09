@@ -1,7 +1,11 @@
 import 'package:dio/dio.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:medusa_admin/src/core/extensions/snack_bar_extension.dart';
+
 import 'package:auto_route/auto_route.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/widgets.dart' as widgets;
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:gap/gap.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -11,7 +15,7 @@ import 'package:medusa_admin/src/core/extensions/num_extension.dart';
 import 'package:medusa_admin/src/core/extensions/date_time_extension.dart';
 import 'package:medusa_admin/src/features/orders/presentation/bloc/orders/orders_bloc.dart';
 import 'package:medusa_admin/src/features/products/presentation/bloc/product_crud/product_crud_bloc.dart';
-import 'package:medusa_admin_dart_client/medusa_admin_dart_client_v2.dart';
+import 'package:medusa_admin_dart_client/medusa_admin_dart_client_v2.dart' hide Image;
 import 'package:medusa_admin/src/core/routing/app_router.dart';
 import 'package:medusa_admin/src/features/dashboard/presentation/widgets/drawer_widget.dart';
 import 'package:medusa_admin/src/features/store_details/presentation/bloc/store/store_bloc.dart';
@@ -40,6 +44,8 @@ class DashboardOverviewView extends StatefulWidget {
 }
 
 class _DashboardOverviewViewState extends State<DashboardOverviewView> {
+  late final ScrollController _scrollController;
+  final ValueNotifier<bool> _isSliverCollapsed = ValueNotifier<bool>(false);
   late final OrdersBloc _ordersBloc;
   late final ProductCrudBloc _productsBloc;
   Map<String, dynamic>? _walletData;
@@ -48,9 +54,27 @@ class _DashboardOverviewViewState extends State<DashboardOverviewView> {
   @override
   void initState() {
     super.initState();
+    _scrollController = ScrollController()..addListener(_onScroll);
     _ordersBloc = OrdersBloc.instance..add(const OrdersEvent.loadOrders(queryParameters: {'limit': 50}));
     _productsBloc = ProductCrudBloc.instance..add(const ProductCrudEvent.loadAll(queryParameters: {'limit': 50}));
     _loadWalletData();
+  }
+
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+    // When scroll offset passes 40px, the sliver is collapsed into the pinned appbar
+    final isCollapsed = _scrollController.offset > 40.0;
+    if (_isSliverCollapsed.value != isCollapsed) {
+      _isSliverCollapsed.value = isCollapsed;
+    }
+  }
+
+  @override
+  void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
+    _isSliverCollapsed.dispose();
+    super.dispose();
   }
 
   Future<void> _loadWalletData() async {
@@ -79,31 +103,24 @@ class _DashboardOverviewViewState extends State<DashboardOverviewView> {
       child: Scaffold(
         backgroundColor: context.theme.scaffoldBackgroundColor,
         drawer: null,
-        appBar: AppBar(
-          title: BlocBuilder<StoreBloc, StoreState>(
-            builder: (context, state) {
-              final storeName = state.mapOrNull(
-                stores: (r) => r.response.stores.firstOrNull?.name,
-              );
-              return Text(
-                storeName != null ? '$storeName Overview' : 'Store Overview',
-                style: GoogleFonts.comfortaa(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 18,
-                  color: Colors.white,
-                ),
-              );
-            },
-          ),
-          centerTitle: true,
-          elevation: 0,
-          backgroundColor: const Color(0xFF344F16),
-          actions: [
-            IconButton(
-              icon: const Icon(Icons.settings_outlined, color: Colors.white),
-              onPressed: () => context.pushRoute(const StoreSettingsRoute()),
+        floatingActionButton: Padding(
+          padding: const EdgeInsets.only(bottom: 8.0),
+          child: FloatingActionButton.extended(
+            heroTag: 'dashboard_quick_create_fab',
+            onPressed: () => _showQuickCreateBottomSheet(context),
+            backgroundColor: const Color(0xFFE48629),
+            elevation: 5,
+            icon: const Icon(Icons.add_rounded, color: Colors.white, size: 24),
+            label: Text(
+              'Quick Actions',
+              style: GoogleFonts.comfortaa(
+                fontWeight: FontWeight.bold,
+                fontSize: 13,
+                color: Colors.white,
+                letterSpacing: 0.3,
+              ),
             ),
-          ],
+          ),
         ),
         body: RefreshIndicator(
           onRefresh: () async {
@@ -115,137 +132,13 @@ class _DashboardOverviewViewState extends State<DashboardOverviewView> {
               }),
             ]);
           },
-          child: SingleChildScrollView(
+          child: CustomScrollView(
+            controller: _scrollController,
             physics: const AlwaysScrollableScrollPhysics(),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // 1. Premium Greeting Banner
-                Container(
-                  width: double.infinity,
-                  decoration: const BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        Color(0xFF1B3A0A),
-                        Color(0xFF2A5C13),
-                        Color(0xFFB86A10),
-                      ],
-                      stops: [0.0, 0.55, 1.0],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                  ),
-                  child: Stack(
-                    children: [
-                      // Gold shimmer ring top-right
-                      Positioned(
-                        right: -30,
-                        top: -30,
-                        child: Container(
-                          width: 130,
-                          height: 130,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: const Color(0xFFE48629).withOpacity(0.22),
-                              width: 28,
-                            ),
-                          ),
-                        ),
-                      ),
-                      // Kente pattern overlay
-                      Positioned.fill(
-                        child: Opacity(
-                          opacity: 0.10,
-                          child: CustomPaint(
-                            painter: _KentePainter(
-                              baseColor: const Color(0xFFF8B55B),
-                            ),
-                          ),
-                        ),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 28, 20, 24),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Container(
-                                  width: 36,
-                                  height: 36,
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFE48629).withOpacity(0.25),
-                                    borderRadius: BorderRadius.circular(10),
-                                    border: Border.all(
-                                      color: const Color(0xFFE48629).withOpacity(0.5),
-                                      width: 1.2,
-                                    ),
-                                  ),
-                                  child: const Icon(
-                                    Icons.storefront_rounded,
-                                    color: Color(0xFFF8B55B),
-                                    size: 20,
-                                  ),
-                                ),
-                                const Gap(12),
-                                Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'Welcome Back, Vendor!',
-                                      style: GoogleFonts.comfortaa(
-                                        color: Colors.white,
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                    Text(
-                                      'Here\'s your store overview',
-                                      style: GoogleFonts.comfortaa(
-                                        color: Colors.white.withOpacity(0.65),
-                                        fontSize: 11.5,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                            const Gap(16),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                              decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(0.10),
-                                borderRadius: BorderRadius.circular(20),
-                                border: Border.all(
-                                  color: Colors.white.withOpacity(0.18),
-                                  width: 1,
-                                ),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  const Icon(Icons.circle, color: Color(0xFF5DDE8A), size: 8),
-                                  const Gap(6),
-                                  Text(
-                                    'Store is Live',
-                                    style: GoogleFonts.comfortaa(
-                                      color: Colors.white.withOpacity(0.88),
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                Padding(
+            slivers: [
+              _buildSliverAppBar(context),
+              SliverToBoxAdapter(
+                child: Padding(
                   padding: const EdgeInsets.all(16.0),
                   child: BlocBuilder<OrdersBloc, OrdersState>(
                     builder: (context, ordersState) {
@@ -611,8 +504,8 @@ class _DashboardOverviewViewState extends State<DashboardOverviewView> {
                     },
                   ),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
@@ -1001,6 +894,731 @@ class _DashboardOverviewViewState extends State<DashboardOverviewView> {
       ],
     );
   }
+
+  Widget _buildSliverAppBar(BuildContext context) {
+    return SliverAppBar(
+      pinned: true,
+      expandedHeight: 120.0,
+      elevation: 0,
+      backgroundColor: const Color(0xFF1B3A0A),
+      automaticallyImplyLeading: false,
+      centerTitle: true,
+      title: ValueListenableBuilder<bool>(
+        valueListenable: _isSliverCollapsed,
+        builder: (context, isCollapsed, _) {
+          return AnimatedOpacity(
+            duration: const Duration(milliseconds: 200),
+            opacity: isCollapsed ? 1.0 : 0.0,
+            child: BlocBuilder<StoreBloc, StoreState>(
+              builder: (context, state) {
+                final storeName = state.mapOrNull(
+                  stores: (r) => r.response.stores.firstOrNull?.name,
+                );
+                return Text(
+                  storeName != null && storeName.isNotEmpty ? storeName : 'Afriomarkets',
+                  style: GoogleFonts.comfortaa(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 17,
+                    color: Colors.white,
+                  ),
+                );
+              },
+            ),
+          );
+        },
+      ),
+      flexibleSpace: FlexibleSpaceBar(
+        collapseMode: CollapseMode.parallax,
+        background: BlocBuilder<StoreBloc, StoreState>(
+          builder: (context, storeState) {
+            final store = storeState.mapOrNull(
+              stores: (r) => r.response.stores.firstOrNull,
+            );
+            final bannerUrl = (store?.metadata?['banner'] ??
+                store?.metadata?['banner_url'] ??
+                store?.metadata?['cover_url']) as String?;
+
+            return Stack(
+              fit: StackFit.expand,
+              children: [
+                // 1. Back: Store banner image or pristine African pattern fallback
+                if (bannerUrl != null && bannerUrl.trim().isNotEmpty)
+                  widgets.Image.network(
+                    bannerUrl.trim(),
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => _buildDefaultBannerBackground(),
+                  )
+                else
+                  _buildDefaultBannerBackground(),
+
+                // 2. Gradient Silhouette (Opacity fading left-to-right: 100% -> 40% -> 20% -> 0%)
+                Container(
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.centerLeft,
+                      end: Alignment.centerRight,
+                      stops: [0.0, 0.40, 0.70, 1.0],
+                      colors: [
+                        Color(0xFF1B3A0A), // 100% solid brand green on text side
+                        Color(0xD91B3A0A), // ~85% opacity
+                        Color(0x592A5C13), // ~35% opacity
+                        Colors.transparent, // 0% opacity on the right so banner image shines through!
+                      ],
+                    ),
+                  ),
+                ),
+
+                // 3. Subtle bottom vignette fading into scaffold background
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  height: 30,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Colors.transparent,
+                          context.theme.scaffoldBackgroundColor.withOpacity(0.9),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+
+                // 4. Subtle Kente overlay on text side
+                Positioned.fill(
+                  child: Opacity(
+                    opacity: 0.08,
+                    child: CustomPaint(
+                      painter: _KentePainter(
+                        baseColor: const Color(0xFFF8B55B),
+                      ),
+                    ),
+                  ),
+                ),
+
+                // 5. Front Content: Greeting & Store is Live & Add/Edit Banner Button
+                // Fades out when collapsed into pinned appbar so only the store name is visible
+                Positioned(
+                  left: 16,
+                  right: 16,
+                  bottom: 10,
+                  child: ValueListenableBuilder<bool>(
+                    valueListenable: _isSliverCollapsed,
+                    builder: (context, isCollapsed, child) {
+                      return AnimatedOpacity(
+                        duration: const Duration(milliseconds: 150),
+                        opacity: isCollapsed ? 0.0 : 1.0,
+                        child: child,
+                      );
+                    },
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              width: 30,
+                              height: 30,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFE48629).withOpacity(0.25),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                  color: const Color(0xFFE48629).withOpacity(0.5),
+                                  width: 1.0,
+                                ),
+                              ),
+                              child: const Icon(
+                                Icons.storefront_rounded,
+                                color: Color(0xFFF8B55B),
+                                size: 17,
+                              ),
+                            ),
+                            const Gap(10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Welcome Back, Vendor!',
+                                    style: GoogleFonts.comfortaa(
+                                      color: Colors.white,
+                                      fontSize: 14.5,
+                                      fontWeight: FontWeight.bold,
+                                      shadows: const [
+                                        Shadow(
+                                          color: Colors.black54,
+                                          blurRadius: 4,
+                                          offset: Offset(0, 1),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  Text(
+                                    "Here's your store overview",
+                                    style: GoogleFonts.comfortaa(
+                                      color: Colors.white.withOpacity(0.80),
+                                      fontSize: 10.5,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                        const Gap(8),
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
+                              decoration: BoxDecoration(
+                                color: Colors.black.withOpacity(0.35),
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(
+                                  color: Colors.white.withOpacity(0.25),
+                                  width: 1,
+                                ),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(Icons.circle, color: Color(0xFF5DDE8A), size: 6.5),
+                                  const Gap(5),
+                                  Text(
+                                    'Store is Live',
+                                    style: GoogleFonts.comfortaa(
+                                      color: Colors.white.withOpacity(0.95),
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const Spacer(),
+                            Material(
+                              color: Colors.transparent,
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(20),
+                                onTap: () => _showBannerOptionsBottomSheet(context, store),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withOpacity(0.40),
+                                    borderRadius: BorderRadius.circular(20),
+                                    border: Border.all(
+                                      color: const Color(0xFFE48629).withOpacity(0.7),
+                                      width: 1,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Icon(
+                                        Icons.camera_alt_outlined,
+                                        color: Color(0xFFF8B55B),
+                                        size: 12,
+                                      ),
+                                      const Gap(4),
+                                      Text(
+                                        bannerUrl != null ? 'Change Banner' : 'Add Banner',
+                                        style: GoogleFonts.comfortaa(
+                                          color: const Color(0xFFF8B55B),
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDefaultBannerBackground() {
+    return Container(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            Color(0xFF1B3A0A),
+            Color(0xFF2A5C13),
+            Color(0xFFB86A10),
+          ],
+          stops: [0.0, 0.55, 1.0],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+      ),
+      child: Stack(
+        children: [
+          // Gold shimmer ring top-right
+          Positioned(
+            right: -30,
+            top: -30,
+            child: Container(
+              width: 130,
+              height: 130,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: const Color(0xFFE48629).withOpacity(0.22),
+                  width: 28,
+                ),
+              ),
+            ),
+          ),
+          // Kente pattern overlay
+          Positioned.fill(
+            child: Opacity(
+              opacity: 0.12,
+              child: CustomPaint(
+                painter: _KentePainter(
+                  baseColor: const Color(0xFFF8B55B),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showBannerOptionsBottomSheet(BuildContext context, Store? store) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(20.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.add_photo_alternate_rounded, color: Color(0xFFE48629), size: 24),
+                    const Gap(10),
+                    Text(
+                      'Store Banner Image',
+                      style: GoogleFonts.comfortaa(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+                const Gap(8),
+                Text(
+                  'Choose how you want to add or update your store header banner.',
+                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                ),
+                const Divider(height: 24),
+                ListTile(
+                  leading: const CircleAvatar(
+                    backgroundColor: Color(0xFFE8F5E9),
+                    child: Icon(Icons.photo_library_outlined, color: Color(0xFF344F16)),
+                  ),
+                  title: const Text('Choose from Gallery', style: TextStyle(fontWeight: FontWeight.w600)),
+                  subtitle: const Text('Pick an image from your device storage', style: TextStyle(fontSize: 12)),
+                  onTap: () async {
+                    Navigator.pop(sheetContext);
+                    final picker = ImagePicker();
+                    final picked = await picker.pickImage(source: ImageSource.gallery, imageQuality: 80);
+                    if (picked != null) {
+                      await _uploadAndSetBannerFile(context, store, picked);
+                    }
+                  },
+                ),
+                ListTile(
+                  leading: const CircleAvatar(
+                    backgroundColor: Color(0xFFFFF3E0),
+                    child: Icon(Icons.camera_alt_outlined, color: Color(0xFFE48629)),
+                  ),
+                  title: const Text('Take a Photo', style: TextStyle(fontWeight: FontWeight.w600)),
+                  subtitle: const Text('Capture a photo of your shop or products', style: TextStyle(fontSize: 12)),
+                  onTap: () async {
+                    Navigator.pop(sheetContext);
+                    final picker = ImagePicker();
+                    final picked = await picker.pickImage(source: ImageSource.camera, imageQuality: 80);
+                    if (picked != null) {
+                      await _uploadAndSetBannerFile(context, store, picked);
+                    }
+                  },
+                ),
+                ListTile(
+                  leading: const CircleAvatar(
+                    backgroundColor: Color(0xFFE3F2FD),
+                    child: Icon(Icons.link_rounded, color: Colors.blue),
+                  ),
+                  title: const Text('Enter Image URL', style: TextStyle(fontWeight: FontWeight.w600)),
+                  subtitle: const Text('Paste a link to any web or brand image', style: TextStyle(fontSize: 12)),
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    _showUrlInputDialog(context, store);
+                  },
+                ),
+                ListTile(
+                  leading: const CircleAvatar(
+                    backgroundColor: Color(0xFFF3E5F5),
+                    child: Icon(Icons.palette_outlined, color: Colors.purple),
+                  ),
+                  title: const Text('Marketplace Themes', style: TextStyle(fontWeight: FontWeight.w600)),
+                  subtitle: const Text('Select from curated African market banners', style: TextStyle(fontSize: 12)),
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    _showPresetThemesSheet(context, store);
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _uploadAndSetBannerFile(BuildContext context, Store? store, XFile file) async {
+    if (store == null || store.id == null) return;
+    try {
+      context.showSnackBar('Uploading banner image...');
+      final dio = getIt<Dio>();
+      final formData = FormData.fromMap({
+        'files': await MultipartFile.fromFile(file.path, filename: file.name),
+      });
+      final res = await dio.post('/admin/uploads', data: formData);
+      if (res.statusCode == 200 && res.data != null) {
+        final uploads = res.data['uploads'] as List?;
+        if (uploads != null && uploads.isNotEmpty) {
+          final url = uploads[0]['url'] as String;
+          await _updateStoreBanner(context, store, url);
+          return;
+        }
+      }
+      context.showSnackBar('Uploaded image received. Updating store...');
+    } catch (e) {
+      if (mounted) {
+        context.showSnackBar('Image upload encountered an issue: $e');
+      }
+    }
+  }
+
+  void _showUrlInputDialog(BuildContext context, Store? store) {
+    final urlCtrl = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (dialogCtx) {
+        return AlertDialog(
+          title: Text(
+            'Enter Image URL',
+            style: GoogleFonts.comfortaa(fontWeight: FontWeight.bold, fontSize: 16),
+          ),
+          content: TextField(
+            controller: urlCtrl,
+            decoration: InputDecoration(
+              hintText: 'https://example.com/banner.jpg',
+              hintStyle: TextStyle(fontSize: 13, color: Colors.grey.shade400),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            ),
+            keyboardType: TextInputType.url,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogCtx),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF344F16),
+                foregroundColor: Colors.white,
+              ),
+              onPressed: () {
+                final url = urlCtrl.text.trim();
+                Navigator.pop(dialogCtx);
+                if (url.isNotEmpty) {
+                  _updateStoreBanner(context, store, url);
+                }
+              },
+              child: const Text('Save Banner'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _showPresetThemesSheet(BuildContext context, Store? store) {
+    final presets = [
+      {
+        'title': 'African Fabrics & Ankara',
+        'url': 'https://images.unsplash.com/photo-1590736969955-71cc94801759?w=1000&q=80',
+      },
+      {
+        'title': 'Spices, Food & Produce',
+        'url': 'https://images.unsplash.com/photo-1596040033229-a9821ebd058d?w=1000&q=80',
+      },
+      {
+        'title': 'Modern African Fashion',
+        'url': 'https://images.unsplash.com/photo-1509631179647-0177331693ae?w=1000&q=80',
+      },
+      {
+        'title': 'African Art & Craft',
+        'url': 'https://images.unsplash.com/photo-1607604276583-eef5d076aa5f?w=1000&q=80',
+      },
+    ];
+
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(20.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Curated Marketplace Themes',
+                  style: GoogleFonts.comfortaa(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const Gap(16),
+                ...presets.map((p) => ListTile(
+                  contentPadding: const EdgeInsets.symmetric(vertical: 4),
+                  leading: ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: widgets.Image.network(
+                      p['url']!,
+                      width: 60,
+                      height: 40,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => Container(
+                        width: 60,
+                        height: 40,
+                        color: const Color(0xFF344F16),
+                        child: const Icon(Icons.image, color: Colors.white70, size: 18),
+                      ),
+                    ),
+                  ),
+                  title: Text(p['title']!, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                  trailing: const Icon(Icons.chevron_right, size: 18),
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    _updateStoreBanner(context, store, p['url']!);
+                  },
+                )),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _updateStoreBanner(BuildContext context, Store? store, String bannerUrl) async {
+    if (store == null || store.id == null) return;
+    try {
+      final updatedMetadata = Map<String, dynamic>.from(store.metadata ?? {});
+      updatedMetadata['banner'] = bannerUrl;
+      updatedMetadata['banner_url'] = bannerUrl;
+
+      final req = UpdateStoreReq(metadata: updatedMetadata);
+      context.read<StoreBloc>().add(StoreEvent.updateStore(store.id!, req));
+
+      if (mounted) {
+        context.showSnackBar('Banner updated successfully!');
+      }
+    } catch (e) {
+      if (mounted) {
+        context.showSnackBar('Failed to update banner: $e');
+      }
+    }
+  }
+
+  void _showQuickCreateBottomSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        return Container(
+          decoration: BoxDecoration(
+            color: Theme.of(context).scaffoldBackgroundColor,
+            borderRadius: const BorderRadius.only(
+              topLeft: Radius.circular(24),
+              topRight: Radius.circular(24),
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.2),
+                blurRadius: 20,
+                offset: const Offset(0, -5),
+              ),
+            ],
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+          child: SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade400,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const Gap(20),
+                Text(
+                  'Quick Actions',
+                  style: GoogleFonts.comfortaa(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: -0.3,
+                  ),
+                ),
+                const Gap(16),
+                _buildQuickActionSheetTile(
+                  context: context,
+                  sheetContext: sheetContext,
+                  title: 'Create Product',
+                  subtitle: 'Add a new product to your catalog',
+                  icon: Icons.add_photo_alternate_outlined,
+                  color: const Color(0xFFE48629),
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    context.pushRoute(AddUpdateProductRoute());
+                  },
+                ),
+                const Gap(12),
+                _buildQuickActionSheetTile(
+                  context: context,
+                  sheetContext: sheetContext,
+                  title: 'New Pickup Request',
+                  subtitle: 'Request pickup for packaged items',
+                  icon: CupertinoIcons.cube_box,
+                  color: const Color(0xFF344F16),
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    context.pushRoute(AddUpdatePickupRequestRoute());
+                  },
+                ),
+                const Gap(12),
+                _buildQuickActionSheetTile(
+                  context: context,
+                  sheetContext: sheetContext,
+                  title: 'New Delivery',
+                  subtitle: 'Create a delivery run for a driver',
+                  icon: Icons.local_shipping_outlined,
+                  color: Colors.blue.shade600,
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    context.pushRoute(AddUpdateDeliveryRoute());
+                  },
+                ),
+                const Gap(12),
+                _buildQuickActionSheetTile(
+                  context: context,
+                  sheetContext: sheetContext,
+                  title: 'Vendor Wallet & Payout',
+                  subtitle: 'Manage balance and bank account payouts',
+                  icon: Icons.account_balance_wallet_outlined,
+                  color: const Color(0xFF2C3E1B),
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    context.pushRoute(const VendorWalletRoute());
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildQuickActionSheetTile({
+    required BuildContext context,
+    required BuildContext sheetContext,
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: Theme.of(context).dividerColor.withOpacity(0.3),
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(icon, color: color, size: 22),
+            ),
+            const Gap(14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                  ),
+                  const Gap(2),
+                  Text(
+                    subtitle,
+                    style: TextStyle(color: Colors.grey.shade600, fontSize: 11),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey),
+          ],
+        ),
+      ),
+    );
+  }
+
 }
 
 // African-inspired kente arc background silhouettes painter
@@ -1159,3 +1777,4 @@ class _SalesChartPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _SalesChartPainter oldDelegate) => true;
 }
+

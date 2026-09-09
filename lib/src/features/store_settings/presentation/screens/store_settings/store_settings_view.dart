@@ -21,7 +21,23 @@ class StoreSettingsView extends StatelessWidget {
       drawerEdgeDragWidth: context.drawerEdgeDragWidth,
       body: NestedScrollView(
         headerSliverBuilder: (context, innerBoxIsScrolled) => [
-          const MedusaSliverAppBar(title: Text('Store Settings')),
+          MedusaSliverAppBar(
+            title: const Text('Store Settings'),
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
+              onPressed: () {
+                if (context.router.canPop()) {
+                  context.router.maybePop();
+                } else {
+                  try {
+                    context.tabsRouter.setActiveIndex(0);
+                  } catch (_) {
+                    context.router.maybePop();
+                  }
+                }
+              },
+            ),
+          ),
         ],
         body: BlocBuilder<StoreBloc, StoreState>(
           builder: (context, state) {

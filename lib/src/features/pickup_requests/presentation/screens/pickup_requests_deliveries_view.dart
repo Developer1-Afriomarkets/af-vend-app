@@ -15,6 +15,20 @@ class PickupRequestsDeliveriesView extends StatelessWidget {
       length: 2,
       child: Scaffold(
         appBar: AppBar(
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 20),
+            onPressed: () {
+              if (context.router.canPop()) {
+                context.router.maybePop();
+              } else {
+                try {
+                  context.tabsRouter.setActiveIndex(0);
+                } catch (_) {
+                  context.router.maybePop();
+                }
+              }
+            },
+          ),
           title: Text(
             'Logistics',
             style: GoogleFonts.comfortaa(

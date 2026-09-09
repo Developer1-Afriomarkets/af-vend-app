@@ -151,6 +151,7 @@ class AppRouter extends RootStackRouter {
     AutoRoute(page: PickupRequestsRoute.page),
     AutoRoute(page: DeliveriesRoute.page),
     AutoRoute(page: PickupRequestsDeliveriesRoute.page),
+    AutoRoute(page: StoreSettingsRoute.page),
   ];
 
   @override
