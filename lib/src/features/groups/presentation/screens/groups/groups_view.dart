@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 
 import 'package:auto_route/auto_route.dart';
 import 'package:flutter/material.dart';
@@ -135,7 +136,7 @@ class _GroupsViewState extends State<GroupsView> {
                 onRefresh: () => pagingController.refresh(),
                 child: PagedListView.separated(
                   separatorBuilder: (_, __) =>
-                      Divider(height: 0, indent: Platform.isIOS ? 16.0 : 0),
+                      Divider(height: 0, indent: (defaultTargetPlatform == TargetPlatform.iOS) ? 16.0 : 0),
                   padding: const EdgeInsets.only(bottom: kToolbarHeight * 1.4),
                   pagingController: pagingController,
                   builderDelegate: PagedChildBuilderDelegate<CustomerGroup>(

@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:adaptive_dialog/adaptive_dialog.dart';
 import 'package:apk_installer/apk_installer.dart';
 import 'package:auto_route/auto_route.dart';
@@ -96,12 +97,12 @@ class _AppUpdateViewState extends State<AppUpdateView> {
                         }
                       : () async {
                           setButtonTitle('Preparing ...');
-                          if (Platform.isIOS) {
+                          if ((defaultTargetPlatform == TargetPlatform.iOS)) {
                             await launchUrl(Uri.parse(
                                 '${AppConstants.githubLink}/releases/tag/${appUpdate?.tagName}'));
                             setButtonTitle('Install Update');
                             return;
-                          } else if (Platform.isAndroid) {
+                          } else if ((defaultTargetPlatform == TargetPlatform.android)) {
                             // Download the update
                             final asset = appUpdate?.assets
                                 ?.where((asset) =>

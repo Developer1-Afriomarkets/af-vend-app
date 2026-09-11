@@ -1,3 +1,4 @@
+import 'package:medusa_admin/src/features/store_details/presentation/bloc/store/store_state_extension.dart';
 import 'package:medusa_admin/src/core/extensions/snack_bar_extension.dart';
 import 'package:auto_route/auto_route.dart';
 import 'package:flutter/material.dart';
@@ -30,14 +31,9 @@ class _CurrenciesViewState extends State<CurrenciesView> {
   late Currency? defaultStoreCurrency;
   late StoreBloc storeBloc;
   Store? store;
-  @override
-  void initState() {
-    storeBloc = StoreBloc.instance;
-    final storeState = storeBloc.state;
-    store = storeState.mapOrNull(
-      stores: (value) => value.response.stores.firstOrNull,
-    );
-    final supportedCurrencies = store?.supportedCurrencies;
+  void _populateCurrencies(Store? s) {
+    store = s;
+    final supportedCurrencies = s?.supportedCurrencies;
     currencies = supportedCurrencies?.map((sc) {
       return Currency(
         code: sc.currencyCode,
@@ -47,7 +43,7 @@ class _CurrenciesViewState extends State<CurrenciesView> {
       );
     }).toList() ?? [];
     
-    final defaultCode = store?.supportedCurrencies
+    final defaultCode = s?.supportedCurrencies
         ?.where((sc) => sc.isDefault == true)
         .firstOrNull
         ?.currencyCode;
@@ -57,6 +53,17 @@ class _CurrenciesViewState extends State<CurrenciesView> {
     defaultStoreCurrency = matchingCurrencies.isNotEmpty
         ? matchingCurrencies.first
         : currencies.firstOrNull;
+  }
+
+  @override
+  void initState() {
+    storeBloc = StoreBloc.instance;
+    final storeState = storeBloc.state;
+    store = storeState.currentStore;
+    if (store == null) {
+      storeBloc.add(const StoreEvent.loadStores(null));
+    }
+    _populateCurrencies(store);
     super.initState();
   }
 
@@ -90,6 +97,10 @@ class _CurrenciesViewState extends State<CurrenciesView> {
         );
       },
       builder: (context, state) {
+        final currentStore = state.currentStore ?? store;
+        if (currencies.isEmpty && currentStore != null) {
+          _populateCurrencies(currentStore);
+        }
         return HideKeyboard(
           child: Scaffold(
             appBar: AppBar(

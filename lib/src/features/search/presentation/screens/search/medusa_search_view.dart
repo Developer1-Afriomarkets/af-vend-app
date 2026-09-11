@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 
 import 'package:auto_route/annotations.dart';
 import 'package:flutter/cupertino.dart';
@@ -105,7 +106,7 @@ class _MedusaSearchViewState extends State<MedusaSearchView> {
                           return const SizedBox.shrink();
                         case SearchCategory.groups:
                           return Divider(
-                              height: 0, indent: Platform.isIOS ? 16.0 : 0);
+                              height: 0, indent: (defaultTargetPlatform == TargetPlatform.iOS) ? 16.0 : 0);
                         case SearchCategory.promotions:
                           return const Gap(12.0);
                         case SearchCategory.priceLists:

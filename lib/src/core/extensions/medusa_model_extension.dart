@@ -46,6 +46,17 @@ extension OrderExtension on Order {
   Address? get shippingAddress => metadata?['shipping_address'] != null 
       ? Address.fromJson(Map<String, dynamic>.from(metadata?['shipping_address'] as Map)) 
       : null;
+  String? get regionId => (metadata?['region_id'] as String?) ?? (metadata?['region'] is Map ? metadata!['region']['id'] as String? : null);
+  String get regionName {
+    final r = metadata?['region'] as Map?;
+    if (r != null && r['name'] != null) return r['name'].toString();
+    final country = shippingAddress?.countryCode?.toUpperCase();
+    if (country == 'GH') return 'Ghana Region';
+    if (country == 'NG') return 'Nigeria Region';
+    if (country == 'GB') return 'UK Region';
+    return 'Regional Hub';
+  }
+
   String get customerName {
     final address = metadata?['shipping_address'] as Map?;
     if (address == null) return 'N/A';

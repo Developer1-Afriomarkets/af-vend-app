@@ -1,5 +1,6 @@
 import 'package:medusa_admin/src/features/store_settings/presentation/screens/store_settings/vendor_wallet_view.dart';
 import 'package:medusa_admin/src/features/store_settings/presentation/screens/store_settings/account_update_wizard_view.dart';
+import 'package:medusa_admin/src/features/store_settings/presentation/screens/store_settings/logistics_onboarding_wizard_view.dart';
 import 'dart:io';
 import 'package:auto_route/auto_route.dart';
 import 'package:collection/collection.dart';
@@ -166,6 +167,7 @@ class AppRouter extends RootStackRouter {
         AutoRoute(page: UrlConfigureRoute.page),
         AutoRoute(page: SignupWizardRoute.page),
         AutoRoute(page: AccountUpdateWizardRoute.page),
+        AutoRoute(page: LogisticsOnboardingWizardRoute.page),
 
       ]),
 
@@ -248,6 +250,7 @@ class AppRouter extends RootStackRouter {
         AutoRoute(page: StoreDetailsRoute.page),
         AutoRoute(page: VendorWalletRoute.page),
         AutoRoute(page: AccountUpdateWizardRoute.page),
+        AutoRoute(page: LogisticsOnboardingWizardRoute.page),
 
         AutoRoute(page: ReturnReasonsRoute.page),
         AutoRoute(page: CreateUpdateReturnReasonRoute.page),

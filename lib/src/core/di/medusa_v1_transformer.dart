@@ -139,6 +139,28 @@ class MedusaV1ResponseTransformer extends Interceptor {
       }
     }
 
+    // V1 Create Invite payload normalization: V2 sends { email: "..." } whereas V1 requires { user: "...", role: "member" }
+    if (path == '/admin/invites' && options.method == 'POST') {
+      var data = options.data;
+      debugPrint('[V1Transformer] Create Invite request data type: ${data?.runtimeType}');
+      if (data is! Map && data != null) {
+        try {
+          data = (data as dynamic).toJson();
+        } catch (e) {
+          debugPrint('[V1Transformer] Failed to convert CreateInviteReq to map: $e');
+        }
+      }
+      if (data is Map) {
+        final email = data['email'] ?? data['user'];
+        final role = data['role'] ?? 'member';
+        options.data = {
+          'user': email,
+          'role': role,
+        };
+        debugPrint('[V1Transformer] Transformed invite payload for Medusa V1: ${options.data}');
+      }
+    }
+
     // V1 Create Product payload wrapping and normalization
     if (path == '/admin/products' && options.method == 'POST') {
       var data = options.data;
@@ -384,11 +406,19 @@ class MedusaV1ResponseTransformer extends Interceptor {
     final authType = AuthPreferenceService.authTypeGetter;
     final secureStorage = getIt<FlutterSecureStorage>();
     try {
+      final String? jwt = await secureStorage.read(key: AppConstants.jwtKey);
+      if (jwt?.isNotEmpty ?? false) {
+        headers['Authorization'] = 'Bearer $jwt';
+      }
       switch (authType) {
         case AuthenticationType.cookie:
+          final token = await secureStorage.read(key: AppConstants.tokenKey);
+          if (token != null && token.isNotEmpty) {
+            headers['x-medusa-access-token'] = token;
+          }
           final String? cookie =
               await secureStorage.read(key: AppConstants.cookieKey);
-          if (cookie?.isNotEmpty ?? false) {
+          if (!kIsWeb && (cookie?.isNotEmpty ?? false)) {
             headers['Cookie'] = cookie!;
           }
           break;
@@ -407,8 +437,6 @@ class MedusaV1ResponseTransformer extends Interceptor {
           }
           break;
         case AuthenticationType.jwt:
-          final String? jwt =
-              await secureStorage.read(key: AppConstants.jwtKey);
           if (jwt?.isNotEmpty ?? false) {
             headers['Authorization'] = 'Bearer $jwt';
           }

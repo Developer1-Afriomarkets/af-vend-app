@@ -25,6 +25,9 @@ class DeliveriesDetailsView extends StatefulWidget {
 class _DeliveriesDetailsViewState extends State<DeliveriesDetailsView> {
   final supabase = Supabase.instance.client;
   Map<String, dynamic>? delivery;
+  Map<String, dynamic>? originStation;
+  Map<String, dynamic>? destStation;
+  Map<String, dynamic>? logisticsOrg;
   List<Order> orders = [];
   bool isLoading = true;
   bool isLoadingOrders = true;
@@ -55,6 +58,33 @@ class _DeliveriesDetailsViewState extends State<DeliveriesDetailsView> {
         } catch (_) {}
       }
 
+      // Fetch Origin Station
+      final origId = response['origin_collection_station_id'];
+      if (origId != null) {
+        try {
+          final sRes = await supabase.from('collection_stations').select('*').eq('id', origId).maybeSingle();
+          if (mounted) setState(() => originStation = sRes);
+        } catch (_) {}
+      }
+
+      // Fetch Dest Station
+      final destId = response['dest_collection_station_id'];
+      if (destId != null) {
+        try {
+          final dRes = await supabase.from('collection_stations').select('*').eq('id', destId).maybeSingle();
+          if (mounted) setState(() => destStation = dRes);
+        } catch (_) {}
+      }
+
+      // Fetch Logistics Org
+      final orgId = response['logistics_org_id'];
+      if (orgId != null) {
+        try {
+          final oRes = await supabase.from('logistics_orgs').select('*').eq('id', orgId).maybeSingle();
+          if (mounted) setState(() => logisticsOrg = oRes);
+        } catch (_) {}
+      }
+
       if (mounted) {
         setState(() {
           delivery = response;
@@ -81,12 +111,23 @@ class _DeliveriesDetailsViewState extends State<DeliveriesDetailsView> {
       return raw.map((e) => e.toString()).toList();
     }
     if (raw is String) {
+      if (raw.startsWith('{') && raw.endsWith('}')) {
+        return raw
+            .substring(1, raw.length - 1)
+            .split(',')
+            .map((s) => s.trim().replaceAll('"', ''))
+            .where((s) => s.isNotEmpty)
+            .toList();
+      }
       try {
         final decoded = jsonDecode(raw);
         if (decoded is List) {
           return decoded.map((e) => e.toString()).toList();
         }
       } catch (_) {}
+      if (raw.trim().isNotEmpty) {
+        return [raw.trim()];
+      }
     }
     return [];
   }
@@ -124,26 +165,144 @@ class _DeliveriesDetailsViewState extends State<DeliveriesDetailsView> {
     }
   }
 
+  String _toDbStatus(String status) {
+    switch (status.toLowerCase()) {
+      case 'ongoing':
+      case 'in transit':
+      case 'processing':
+        return 'processing';
+      case 'delivered':
+        return 'delivered';
+      case 'completed':
+        return 'completed';
+      case 'pending':
+      case 'created':
+      default:
+        return 'created';
+    }
+  }
+
   Future<void> _updateStatus(String newStatus) async {
     final del = delivery;
     if (del == null) return;
 
+    final dbStatus = _toDbStatus(newStatus);
     setState(() => isUpdating = true);
     try {
       await supabase
           .from('deliveries')
-          .update({'status': newStatus.toLowerCase()})
+          .update({'status': dbStatus})
           .eq('id', del['id']);
 
       setState(() {
-        del['status'] = newStatus.toLowerCase();
+        del['status'] = dbStatus;
         isUpdating = false;
       });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Delivery marked as ${newStatus.toUpperCase()}'),
+            backgroundColor: const Color(0xFF1B3A0A),
+          ),
+        );
+      }
     } catch (e) {
       setState(() => isUpdating = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to update status: $e')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to update status: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _completeDeliveryWithProof() async {
+    final recipientCtrl = TextEditingController();
+    final notesCtrl = TextEditingController();
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.verified_outlined, color: Color(0xFF1B3A0A)),
+            Gap(8),
+            Text('Complete Delivery Run'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Confirm receipt of package and record recipient confirmation details:',
+              style: TextStyle(fontSize: 13),
+            ),
+            const Gap(12),
+            TextField(
+              controller: recipientCtrl,
+              decoration: InputDecoration(
+                labelText: 'Received By (Name / Staff ID)',
+                hintText: 'e.g. Kwesi Mensah / Security Desk',
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+            ),
+            const Gap(10),
+            TextField(
+              controller: notesCtrl,
+              maxLines: 2,
+              decoration: InputDecoration(
+                labelText: 'Delivery Notes / Condition',
+                hintText: 'e.g. Delivered intact in original packaging',
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: const Color(0xFF1B3A0A)),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Confirm Delivery'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      final del = delivery;
+      if (del == null) return;
+
+      setState(() => isUpdating = true);
+      try {
+        final Map<String, dynamic> updatePayload = {
+          'status': 'completed',
+        };
+        await supabase.from('deliveries').update(updatePayload).eq('id', del['id']);
+
+        setState(() {
+          del['status'] = 'completed';
+          isUpdating = false;
+        });
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Delivery successfully confirmed and completed!'),
+              backgroundColor: Color(0xFF1B3A0A),
+            ),
+          );
+        }
+      } catch (e) {
+        setState(() => isUpdating = false);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error completing delivery: $e')),
+          );
+        }
+      }
     }
   }
 
@@ -176,16 +335,26 @@ class _DeliveriesDetailsViewState extends State<DeliveriesDetailsView> {
         }
       } catch (e) {
         setState(() => isUpdating = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to delete delivery: $e')),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Failed to delete delivery: $e')),
+          );
+        }
       }
     }
   }
 
-  void _callDriver(String phone) async {
+  void _callNumber(String phone) async {
     if (phone.isEmpty || phone == 'N/A') return;
     final Uri url = Uri.parse('tel:$phone');
+    if (await canLaunchUrl(url)) {
+      await launchUrl(url);
+    }
+  }
+
+  void _smsNumber(String phone) async {
+    if (phone.isEmpty || phone == 'N/A') return;
+    final Uri url = Uri.parse('sms:$phone');
     if (await canLaunchUrl(url)) {
       await launchUrl(url);
     }
@@ -213,7 +382,7 @@ class _DeliveriesDetailsViewState extends State<DeliveriesDetailsView> {
                 const Icon(CupertinoIcons.square_stack_3d_up, size: 20, color: Color(0xFFE48629)),
                 const Gap(8),
                 Text(
-                  'Delivery Process Timeline',
+                  'Delivery Lifecycle',
                   style: context.bodyLarge?.copyWith(fontWeight: FontWeight.bold),
                 ),
               ],
@@ -223,13 +392,13 @@ class _DeliveriesDetailsViewState extends State<DeliveriesDetailsView> {
               children: List.generate(steps.length, (index) {
                 final isPassed = index <= currentStepIndex;
                 final isCurrent = index == currentStepIndex;
-                final stepTitle = steps[index];
+                final stepTitle = steps[index] == 'ONGOING' ? 'IN TRANSIT' : steps[index];
 
                 Color stepColor;
                 if (isCurrent) {
                   stepColor = const Color(0xFFE48629);
                 } else if (isPassed) {
-                  stepColor = Colors.green;
+                  stepColor = const Color(0xFF1B3A0A);
                 } else {
                   stepColor = Colors.grey.shade400;
                 }
@@ -264,7 +433,7 @@ class _DeliveriesDetailsViewState extends State<DeliveriesDetailsView> {
                             Text(
                               stepTitle,
                               style: TextStyle(
-                                fontSize: 11,
+                                fontSize: 10,
                                 fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
                                 color: isCurrent ? stepColor : ColorManager.manatee,
                               ),
@@ -276,7 +445,7 @@ class _DeliveriesDetailsViewState extends State<DeliveriesDetailsView> {
                         Expanded(
                           child: Container(
                             height: 2,
-                            color: index < currentStepIndex ? Colors.green : Colors.grey.shade300,
+                            color: index < currentStepIndex ? const Color(0xFF1B3A0A) : Colors.grey.shade300,
                           ),
                         ),
                     ],
@@ -304,11 +473,12 @@ class _DeliveriesDetailsViewState extends State<DeliveriesDetailsView> {
     final smallTextStyle = context.bodySmall;
     final status = del['status']?.toString().toUpperCase() ?? 'PENDING';
     final regionName = del['resolved_region_name']?.toString() ?? 'N/A';
-    final driverName = del['driver_name']?.toString() ?? 'N/A';
+    final driverName = del['driver_name']?.toString() ?? 'Unassigned';
     final driverPhone = del['driver_phone']?.toString() ?? 'N/A';
     final vehicleInfo = del['vehicle_info']?.toString() ?? 'N/A';
+    final vehicleType = del['vehicle_type']?.toString() ?? 'Van';
     final deliveryMode = del['delivery_mode']?.toString() ?? 'Standard';
-    final routeCategory = del['route_category']?.toString().toUpperCase() ?? 'URBAN';
+    final routeCategory = del['route_category']?.toString().replaceAll('_', ' ').toUpperCase() ?? 'INTRA STATE';
 
     DateTime? createdAt;
     if (del['created_at'] != null) {
@@ -317,12 +487,12 @@ class _DeliveriesDetailsViewState extends State<DeliveriesDetailsView> {
     final dateString = createdAt != null ? DateFormat.yMMMd().add_jm().format(createdAt) : 'N/A';
 
     Color statusColor;
-    if (status == 'COMPLETED') {
-      statusColor = Colors.green;
-    } else if (status == 'ONGOING') {
-      statusColor = Colors.blue;
+    if (status == 'COMPLETED' || status == 'DELIVERED') {
+      statusColor = const Color(0xFF1B3A0A);
+    } else if (status == 'ONGOING' || status == 'PROCESSING' || status == 'IN TRANSIT') {
+      statusColor = Colors.blue.shade700;
     } else {
-      statusColor = Colors.orange;
+      statusColor = const Color(0xFFE48629);
     }
 
     return Scaffold(
@@ -383,7 +553,7 @@ class _DeliveriesDetailsViewState extends State<DeliveriesDetailsView> {
                                         border: Border.all(color: statusColor.withValues(alpha: 0.5)),
                                       ),
                                       child: Text(
-                                        status,
+                                        status == 'ONGOING' ? 'IN TRANSIT' : status,
                                         style: context.bodyMedium?.copyWith(
                                           color: statusColor,
                                           fontWeight: FontWeight.bold,
@@ -401,20 +571,66 @@ class _DeliveriesDetailsViewState extends State<DeliveriesDetailsView> {
                                       border: Border.all(color: Colors.grey.withValues(alpha: 0.3)),
                                     ),
                                     child: DropdownButton<String>(
-                                      value: status == 'PENDING'
+                                      value: (status == 'CREATED' || status == 'PENDING')
                                           ? 'Pending'
-                                          : status == 'ONGOING'
+                                          : (status == 'PROCESSING' || status == 'ONGOING' || status == 'IN TRANSIT')
                                               ? 'Ongoing'
-                                              : 'Completed',
+                                              : (status == 'DELIVERED')
+                                                  ? 'Delivered'
+                                                  : 'Completed',
                                       onChanged: (val) {
                                         if (val != null) _updateStatus(val);
                                       },
-                                      items: ['Pending', 'Ongoing', 'Completed']
-                                          .map((s) => DropdownMenuItem(value: s, child: Text(s)))
+                                      items: ['Pending', 'Ongoing', 'Delivered', 'Completed']
+                                          .map((s) => DropdownMenuItem(value: s, child: Text(s == 'Ongoing' ? 'In Transit' : s)))
                                           .toList(),
                                     ),
                                   ),
                                 ),
+                              ],
+                            ),
+
+                            // Quick Action Buttons
+                            const Gap(14),
+                            Row(
+                              children: [
+                                if (status == 'PENDING' || status == 'CREATED')
+                                  Expanded(
+                                    child: FilledButton.icon(
+                                      style: FilledButton.styleFrom(
+                                        backgroundColor: const Color(0xFFE48629),
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                      ),
+                                      onPressed: () => _updateStatus('processing'),
+                                      icon: const Icon(Icons.play_arrow, size: 18),
+                                      label: const Text('Dispatch / In Transit'),
+                                    ),
+                                  ),
+                                if (status == 'ONGOING' || status == 'PROCESSING' || status == 'IN TRANSIT')
+                                  Expanded(
+                                    child: FilledButton.icon(
+                                      style: FilledButton.styleFrom(
+                                        backgroundColor: const Color(0xFF1B3A0A),
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                      ),
+                                      onPressed: _completeDeliveryWithProof,
+                                      icon: const Icon(Icons.check_circle_outline, size: 18),
+                                      label: const Text('Confirm Delivered'),
+                                    ),
+                                  ),
+                                if (status == 'COMPLETED' || status == 'DELIVERED')
+                                  Expanded(
+                                    child: OutlinedButton.icon(
+                                      style: OutlinedButton.styleFrom(
+                                        foregroundColor: const Color(0xFF1B3A0A),
+                                        side: const BorderSide(color: Color(0xFF1B3A0A)),
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                      ),
+                                      onPressed: () => _updateStatus('processing'),
+                                      icon: const Icon(Icons.undo, size: 18),
+                                      label: const Text('Re-open Run'),
+                                    ),
+                                  ),
                               ],
                             ),
                           ],
@@ -426,6 +642,150 @@ class _DeliveriesDetailsViewState extends State<DeliveriesDetailsView> {
                     // Process Timeline
                     _buildProcessTimeline(status),
                     const Gap(12),
+
+                    // Stations Card (Origin -> Destination)
+                    if (originStation != null || destStation != null) ...[
+                      Card(
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                          side: BorderSide(color: Colors.grey.withValues(alpha: 0.2)),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.all(16.0),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  const Icon(Icons.route, size: 20, color: Color(0xFF1B3A0A)),
+                                  const Gap(8),
+                                  Text(
+                                    'Transit Route & Hub Stations',
+                                    style: context.bodyLarge?.copyWith(fontWeight: FontWeight.bold),
+                                  ),
+                                ],
+                              ),
+                              const Gap(14),
+                              if (originStation != null) ...[
+                                Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const CircleAvatar(
+                                      radius: 12,
+                                      backgroundColor: Color(0x22E48629),
+                                      child: Icon(Icons.trip_origin, size: 14, color: Color(0xFFE48629)),
+                                    ),
+                                    const Gap(10),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text('Origin Station', style: smallTextStyle?.copyWith(color: manatee)),
+                                          Text(
+                                            '${originStation!['name']} (${originStation!['city'] ?? ''})',
+                                            style: context.bodyMedium?.copyWith(fontWeight: FontWeight.bold),
+                                          ),
+                                          if (originStation!['address'] != null)
+                                            Text(
+                                              originStation!['address'].toString(),
+                                              style: smallTextStyle?.copyWith(color: manatee),
+                                            ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const Padding(
+                                  padding: EdgeInsets.only(left: 11),
+                                  child: SizedBox(
+                                    height: 16,
+                                    child: VerticalDivider(thickness: 2, color: Colors.grey),
+                                  ),
+                                ),
+                              ],
+                              if (destStation != null) ...[
+                                Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const CircleAvatar(
+                                      radius: 12,
+                                      backgroundColor: Color(0x221B3A0A),
+                                      child: Icon(Icons.location_on, size: 14, color: Color(0xFF1B3A0A)),
+                                    ),
+                                    const Gap(10),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text('Destination Station', style: smallTextStyle?.copyWith(color: manatee)),
+                                          Text(
+                                            '${destStation!['name']} (${destStation!['city'] ?? ''})',
+                                            style: context.bodyMedium?.copyWith(fontWeight: FontWeight.bold),
+                                          ),
+                                          if (destStation!['address'] != null)
+                                            Text(
+                                              destStation!['address'].toString(),
+                                              style: smallTextStyle?.copyWith(color: manatee),
+                                            ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ),
+                      const Gap(12),
+                    ],
+
+                    // Logistics Org Card
+                    if (logisticsOrg != null) ...[
+                      Card(
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                          side: BorderSide(color: Colors.grey.withValues(alpha: 0.2)),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.all(16.0),
+                          child: Row(
+                            children: [
+                              const CircleAvatar(
+                                backgroundColor: Color(0x181B3A0A),
+                                child: Icon(Icons.business, color: Color(0xFF1B3A0A)),
+                              ),
+                              const Gap(12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text('Logistics Partner', style: smallTextStyle?.copyWith(color: manatee)),
+                                    Text(
+                                      logisticsOrg!['name']?.toString() ?? 'Partner',
+                                      style: context.bodyMedium?.copyWith(fontWeight: FontWeight.bold),
+                                    ),
+                                    if (logisticsOrg!['contact_person'] != null)
+                                      Text(
+                                        'Contact: ${logisticsOrg!['contact_person']}',
+                                        style: smallTextStyle?.copyWith(color: manatee),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                              if (logisticsOrg!['phone'] != null)
+                                IconButton.filledTonal(
+                                  icon: const Icon(Icons.phone, color: Color(0xFF1B3A0A), size: 18),
+                                  onPressed: () => _callNumber(logisticsOrg!['phone'].toString()),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const Gap(12),
+                    ],
 
                     // Driver Details Card
                     Card(
@@ -450,16 +810,24 @@ class _DeliveriesDetailsViewState extends State<DeliveriesDetailsView> {
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
-                                      Text('Driver', style: smallTextStyle?.copyWith(color: manatee)),
+                                      Text('Assigned Driver / Rider', style: smallTextStyle?.copyWith(color: manatee)),
                                       Text(driverName, style: context.bodyLarge?.copyWith(fontWeight: FontWeight.bold)),
                                     ],
                                   ),
                                 ),
-                                if (driverPhone.isNotEmpty && driverPhone != 'N/A')
+                                if (driverPhone.isNotEmpty && driverPhone != 'N/A') ...[
                                   IconButton.filledTonal(
-                                    icon: const Icon(CupertinoIcons.phone_fill, color: Colors.green),
-                                    onPressed: () => _callDriver(driverPhone),
+                                    icon: const Icon(Icons.sms, color: Color(0xFFE48629), size: 18),
+                                    tooltip: 'SMS Driver',
+                                    onPressed: () => _smsNumber(driverPhone),
                                   ),
+                                  const Gap(6),
+                                  IconButton.filledTonal(
+                                    icon: const Icon(CupertinoIcons.phone_fill, color: Colors.green, size: 18),
+                                    tooltip: 'Call Driver',
+                                    onPressed: () => _callNumber(driverPhone),
+                                  ),
+                                ],
                               ],
                             ),
                             const Divider(height: 24),
@@ -469,9 +837,9 @@ class _DeliveriesDetailsViewState extends State<DeliveriesDetailsView> {
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
-                                      Text('Vehicle Info', style: smallTextStyle?.copyWith(color: manatee)),
+                                      Text('Vehicle & Type', style: smallTextStyle?.copyWith(color: manatee)),
                                       const Gap(2),
-                                      Text(vehicleInfo, style: context.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
+                                      Text('$vehicleType ($vehicleInfo)', style: context.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
                                     ],
                                   ),
                                 ),
@@ -479,7 +847,7 @@ class _DeliveriesDetailsViewState extends State<DeliveriesDetailsView> {
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
-                                      Text('Phone', style: smallTextStyle?.copyWith(color: manatee)),
+                                      Text('Driver Contact', style: smallTextStyle?.copyWith(color: manatee)),
                                       const Gap(2),
                                       Text(driverPhone, style: context.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
                                     ],
@@ -535,7 +903,7 @@ class _DeliveriesDetailsViewState extends State<DeliveriesDetailsView> {
                                 Column(
                                   crossAxisAlignment: CrossAxisAlignment.end,
                                   children: [
-                                    Text('Date Created', style: smallTextStyle?.copyWith(color: manatee)),
+                                    Text('Dispatched At', style: smallTextStyle?.copyWith(color: manatee)),
                                     const Gap(2),
                                     Text(dateString, style: context.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
                                   ],
@@ -549,31 +917,39 @@ class _DeliveriesDetailsViewState extends State<DeliveriesDetailsView> {
                     const Gap(16),
 
                     // Associated orders
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          'Associated Orders (${orders.length})',
-                          style: context.bodyLarge?.copyWith(fontWeight: FontWeight.bold),
-                        ),
-                        if (isLoadingOrders)
-                          const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator.adaptive(strokeWidth: 2),
-                          ),
-                      ],
-                    ),
-                    const Gap(8),
-                    isLoadingOrders
-                        ? const Center(
-                            child: Padding(
-                              padding: EdgeInsets.all(24.0),
-                              child: CircularProgressIndicator.adaptive(),
+                    Builder(
+                      builder: (context) {
+                        final rawIds = _parseOrderIds(delivery?['order_ids']);
+                        final totalCount = rawIds.isNotEmpty ? rawIds.length : orders.length;
+
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  'Associated Orders ($totalCount)',
+                                  style: context.bodyLarge?.copyWith(fontWeight: FontWeight.bold),
+                                ),
+                                if (isLoadingOrders)
+                                  const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator.adaptive(strokeWidth: 2),
+                                  ),
+                              ],
                             ),
-                          )
-                        : orders.isEmpty
-                            ? Card(
+                            const Gap(8),
+                            if (isLoadingOrders && orders.isEmpty)
+                              const Center(
+                                child: Padding(
+                                  padding: EdgeInsets.all(24.0),
+                                  child: CircularProgressIndicator.adaptive(),
+                                ),
+                              )
+                            else if (totalCount == 0)
+                              Card(
                                 elevation: 0,
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(16),
@@ -586,42 +962,71 @@ class _DeliveriesDetailsViewState extends State<DeliveriesDetailsView> {
                                   ),
                                 ),
                               )
-                            : Column(
-                                children: orders.map((order) {
-                                  final total = order.total != null
-                                      ? '${(order.total! / 100).toStringAsFixed(2)} ${order.currencyCode.toUpperCase()}'
-                                      : 'N/A';
-                                  final customer = order.customerName;
-                                  return Card(
-                                    margin: const EdgeInsets.only(bottom: 10),
-                                    elevation: 0,
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(16),
-                                      side: BorderSide(color: Colors.grey.withValues(alpha: 0.2)),
+                            else ...[
+                              // Render successfully fetched full orders
+                              ...orders.map((order) {
+                                final total = order.total != null
+                                    ? '${(order.total! / 100).toStringAsFixed(2)} ${order.currencyCode.toUpperCase()}'
+                                    : 'N/A';
+                                final customer = order.customerName;
+                                return Card(
+                                  margin: const EdgeInsets.only(bottom: 10),
+                                  elevation: 0,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(16),
+                                    side: BorderSide(color: Colors.grey.withValues(alpha: 0.2)),
+                                  ),
+                                  child: ListTile(
+                                    onTap: () {
+                                      context.pushRoute(OrderDetailsRoute(orderId: order.id));
+                                    },
+                                    leading: const CircleAvatar(
+                                      backgroundColor: Color(0x15000000),
+                                      child: Icon(Icons.local_shipping, color: Color(0xFFE48629)),
                                     ),
-                                    child: ListTile(
-                                      onTap: () {
-                                        context.pushRoute(OrderDetailsRoute(orderId: order.id));
-                                      },
-                                      leading: const CircleAvatar(
-                                        backgroundColor: Color(0x15000000),
-                                        child: Icon(Icons.local_shipping, color: Color(0xFFE48629)),
-                                      ),
-                                      title: Text('Order #${order.displayId}', style: const TextStyle(fontWeight: FontWeight.bold)),
-                                      subtitle: Text('Customer: $customer\nPayment: ${order.paymentStatus?.name.toUpperCase()}'),
-                                      trailing: Column(
-                                        mainAxisAlignment: MainAxisAlignment.center,
-                                        crossAxisAlignment: CrossAxisAlignment.end,
-                                        children: [
-                                          Text(total, style: context.bodyMedium?.copyWith(fontWeight: FontWeight.bold)),
-                                          const Gap(4),
-                                          const Icon(Icons.arrow_forward_ios, size: 12, color: Colors.grey),
-                                        ],
-                                      ),
+                                    title: Text('Order #${order.displayId}', style: const TextStyle(fontWeight: FontWeight.bold)),
+                                    subtitle: Text('Customer: $customer\nPayment: ${order.paymentStatus?.name.toUpperCase()}'),
+                                    trailing: Column(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      crossAxisAlignment: CrossAxisAlignment.end,
+                                      children: [
+                                        Text(total, style: context.bodyMedium?.copyWith(fontWeight: FontWeight.bold)),
+                                        const Gap(4),
+                                        const Icon(Icons.arrow_forward_ios, size: 12, color: Colors.grey),
+                                      ],
                                     ),
-                                  );
-                                }).toList(),
-                              ),
+                                  ),
+                                );
+                              }),
+
+                              // Render resilient fallback cards for order IDs not in full orders list
+                              ...rawIds.where((id) => !orders.any((o) => o.id == id)).map((id) {
+                                return Card(
+                                  margin: const EdgeInsets.only(bottom: 10),
+                                  elevation: 0,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(16),
+                                    side: BorderSide(color: Colors.grey.withValues(alpha: 0.2)),
+                                  ),
+                                  child: ListTile(
+                                    onTap: () {
+                                      context.pushRoute(OrderDetailsRoute(orderId: id));
+                                    },
+                                    leading: const CircleAvatar(
+                                      backgroundColor: Color(0x15000000),
+                                      child: Icon(Icons.local_shipping_outlined, color: Color(0xFFE48629)),
+                                    ),
+                                    title: Text('Order: $id', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                                    subtitle: const Text('Linked Run Package • Tap to view order details', style: TextStyle(fontSize: 12)),
+                                    trailing: const Icon(Icons.arrow_forward_ios, size: 12, color: Colors.grey),
+                                  ),
+                                );
+                              }),
+                            ],
+                          ],
+                        );
+                      },
+                    ),
                   ],
                 ),
               ),

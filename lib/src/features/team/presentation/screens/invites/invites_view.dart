@@ -1,5 +1,5 @@
 import 'package:adaptive_dialog/adaptive_dialog.dart';
-import 'package:auto_route/annotations.dart';
+import 'package:auto_route/auto_route.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:infinite_scroll_pagination/infinite_scroll_pagination.dart';
@@ -124,7 +124,13 @@ class _InvitesViewState extends State<InvitesView> {
         ),
         body: NestedScrollView(
           headerSliverBuilder: (context, innerBoxIsScrolled) => [
-            const MedusaSliverAppBar(title: Text('Invites')),
+            MedusaSliverAppBar(
+              title: const Text('Staff Invitations'),
+              leading: IconButton(
+                icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
+                onPressed: () => context.maybePop(),
+              ),
+            ),
           ],
           body: SmartRefresher(
             controller: refreshController,

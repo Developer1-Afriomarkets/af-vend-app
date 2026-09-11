@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
@@ -27,7 +28,7 @@ class SignInButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final TextStyle filledTextStyle = GoogleFonts.aBeeZee(
         fontSize: 16.0, color: textColor ?? ColorManager.white);
-    if (Platform.isIOS) {
+    if ((defaultTargetPlatform == TargetPlatform.iOS)) {
       return CupertinoTheme(
         data: CupertinoThemeData(
             primaryColor: buttonColor ?? Theme.of(context).primaryColor),

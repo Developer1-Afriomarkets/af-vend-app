@@ -1,6 +1,10 @@
-import 'dart:io';
+import 'package:medusa_admin/src/core/services/app_scope_service.dart';
+import 'package:auto_route/auto_route.dart';
+import 'package:medusa_admin/src/core/routing/app_router.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
+import '../invites/components/invite_user.dart';
+import 'package:flutter/foundation.dart';
 import 'package:adaptive_dialog/adaptive_dialog.dart';
-import 'package:auto_route/annotations.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:infinite_scroll_pagination/infinite_scroll_pagination.dart';
@@ -79,9 +83,36 @@ class _TeamViewState extends State<TeamView> {
         );
       },
       child: Scaffold(
+        floatingActionButton: FloatingActionButton.extended(
+          icon: const Icon(LucideIcons.userPlus),
+          label: const Text('Invite Member'),
+          onPressed: () async {
+            final result = await showModalBottomSheet<bool?>(
+              context: context,
+              isScrollControlled: true,
+              builder: (context) => const InviteUser(),
+            );
+            if (result == true) {
+              pagingController.refresh();
+            }
+          },
+        ),
         body: NestedScrollView(
           headerSliverBuilder: (context, innerBoxIsScrolled) => [
-            const MedusaSliverAppBar(title: Text('The Team')),
+            MedusaSliverAppBar(
+              title: Text(AppScopeService.isLogistics ? 'Logistics Fleet & Dispatch Team' : 'The Team'),
+              leading: IconButton(
+                icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
+                onPressed: () => context.maybePop(),
+              ),
+              actions: [
+                IconButton(
+                  icon: const Icon(LucideIcons.mail),
+                  tooltip: 'Staff Invitations',
+                  onPressed: () => context.pushRoute(const InvitesRoute()),
+                ),
+              ],
+            ),
           ],
           body: SmartRefresher(
             controller: refreshController,
@@ -94,7 +125,7 @@ class _TeamViewState extends State<TeamView> {
                   return TeamCard(
                     user: user,
                     onEditTap: () async {
-                      if (Platform.isIOS) {
+                      if (defaultTargetPlatform == TargetPlatform.iOS) {
                         await showCupertinoModalBottomSheet(
                             context: context,
                             builder: (_) => UpdateUserCard(

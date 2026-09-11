@@ -3,13 +3,12 @@ import 'package:auto_route/auto_route.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:gap/gap.dart';
-import 'package:intl/intl.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:medusa_admin/src/core/constants/colors.dart';
-import 'package:medusa_admin/src/core/extensions/text_style_extension.dart';
+import 'package:medusa_admin/src/core/di/di.dart';
+import 'package:medusa_admin/src/core/extensions/context_extension.dart';
 import 'package:medusa_admin/src/core/extensions/medusa_model_extension.dart';
 import 'package:medusa_admin/src/core/routing/app_router.dart';
-import 'package:medusa_admin/src/features/orders/domain/usecases/order/order_details_use_case.dart';
 import 'package:medusa_admin_dart_client/medusa_admin_dart_client_v2.dart';
 
 @RoutePage()
@@ -24,6 +23,8 @@ class PickupRequestsDetailsView extends StatefulWidget {
 class _PickupRequestsDetailsViewState extends State<PickupRequestsDetailsView> {
   final supabase = Supabase.instance.client;
   Map<String, dynamic>? request;
+  Map<String, dynamic>? collectionStation;
+  Map<String, dynamic>? logisticsOrg;
   List<Order> orders = [];
   bool isLoading = true;
   bool isLoadingOrders = true;
@@ -49,7 +50,7 @@ class _PickupRequestsDetailsViewState extends State<PickupRequestsDetailsView> {
         try {
           final regRes = await supabase.from('region').select('name').eq('id', regId).maybeSingle();
           if (regRes != null) {
-            response['resolved_region_name'] = regRes['name']?.toString() ?? 'N/A';
+            response['resolved_region_name'] = regRes['name']?.toString() ?? 'Universal';
           }
         } catch (_) {}
       }
@@ -57,9 +58,21 @@ class _PickupRequestsDetailsViewState extends State<PickupRequestsDetailsView> {
       final logId = response['logistics_org_id']?.toString();
       if (logId != null && logId.isNotEmpty) {
         try {
-          final logRes = await supabase.from('logistics_orgs').select('name').eq('id', logId).maybeSingle();
+          final logRes = await supabase.from('logistics_orgs').select('*').eq('id', logId).maybeSingle();
           if (logRes != null) {
-            response['resolved_logistics_name'] = logRes['name']?.toString() ?? 'N/A';
+            logisticsOrg = logRes;
+            response['resolved_logistics_name'] = logRes['name']?.toString() ?? 'Afriomarkets Fleet';
+          }
+        } catch (_) {}
+      }
+
+      final stationId = response['collection_station_id']?.toString();
+      if (stationId != null && stationId.isNotEmpty) {
+        try {
+          final stationRes = await supabase.from('collection_stations').select('*').eq('id', stationId).maybeSingle();
+          if (stationRes != null) {
+            collectionStation = stationRes;
+            response['resolved_station_name'] = stationRes['name']?.toString() ?? 'Direct Hub';
           }
         } catch (_) {}
       }
@@ -96,29 +109,28 @@ class _PickupRequestsDetailsViewState extends State<PickupRequestsDetailsView> {
           return decoded.map((e) => e.toString()).toList();
         }
       } catch (_) {}
+      final cleaned = raw.replaceAll('{', '').replaceAll('}', '').replaceAll('"', '').trim();
+      if (cleaned.isNotEmpty) {
+        return cleaned.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+      }
     }
     return [];
   }
 
   Future<void> _fetchOrders() async {
-    final req = request;
-    if (req == null) return;
-
-    final orderIds = _parseOrderIds(req['order_ids']);
+    final orderIds = _parseOrderIds(request?['order_ids']);
     if (orderIds.isEmpty) {
-      setState(() => isLoadingOrders = false);
+      if (mounted) setState(() => isLoadingOrders = false);
       return;
     }
 
-    setState(() => isLoadingOrders = true);
     try {
-      final fetchedOrders = <Order>[];
+      final List<Order> fetchedOrders = [];
       for (final id in orderIds) {
-        final result = await OrderCrudUseCase.instance.retrieveOrder(id: id);
-        result.when(
-          (order) => fetchedOrders.add(order),
-          (error) => debugPrint('Error fetching order $id: $error'),
-        );
+        try {
+          final res = await getIt<MedusaAdminV2>().orders.retrieve(id);
+          if (res.order != null) fetchedOrders.add(res.order!);
+        } catch (_) {}
       }
       if (mounted) {
         setState(() {
@@ -127,50 +139,47 @@ class _PickupRequestsDetailsViewState extends State<PickupRequestsDetailsView> {
         });
       }
     } catch (e) {
-      if (mounted) {
-        setState(() => isLoadingOrders = false);
+      if (mounted) setState(() => isLoadingOrders = false);
+    }
+  }
+
+  Future<void> _updateStatus(String newStatus, {bool? markPackaged}) async {
+    final req = request;
+    if (req == null) return;
+
+    setState(() => isUpdating = true);
+    try {
+      final updates = <String, dynamic>{
+        'status': newStatus.toLowerCase(),
+        'updated_at': DateTime.now().toIso8601String(),
+      };
+
+      if (markPackaged == true) {
+        updates['packaged'] = true;
+        updates['processed'] = true;
+        updates['packaged_at'] = DateTime.now().toIso8601String();
+        updates['processed_at'] = DateTime.now().toIso8601String();
       }
-    }
-  }
 
-  Future<void> _updateConfirmPayment(bool value) async {
-    final req = request;
-    if (req == null) return;
-
-    setState(() => isUpdating = true);
-    try {
-      await supabase
-          .from('pickup_requests')
-          .update({'confirm_payment': value})
-          .eq('id', req['id']);
-
-      setState(() {
-        req['confirm_payment'] = value;
-        isUpdating = false;
-      });
-    } catch (e) {
-      setState(() => isUpdating = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to update payment confirmation: $e')),
-      );
-    }
-  }
-
-  Future<void> _updateStatus(String newStatus) async {
-    final req = request;
-    if (req == null) return;
-
-    setState(() => isUpdating = true);
-    try {
-      await supabase
-          .from('pickup_requests')
-          .update({'status': newStatus.toLowerCase()})
-          .eq('id', req['id']);
+      await supabase.from('pickup_requests').update(updates).eq('id', req['id']);
 
       setState(() {
         req['status'] = newStatus.toLowerCase();
+        if (markPackaged == true) {
+          req['packaged'] = true;
+          req['processed'] = true;
+        }
         isUpdating = false;
       });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Status updated to ${newStatus.toUpperCase()}'),
+            backgroundColor: const Color(0xFF1B3A0A),
+          ),
+        );
+      }
     } catch (e) {
       setState(() => isUpdating = false);
       ScaffoldMessenger.of(context).showSnackBar(
@@ -215,17 +224,230 @@ class _PickupRequestsDetailsViewState extends State<PickupRequestsDetailsView> {
     }
   }
 
-  Widget _buildProcessTimeline(String currentStatus) {
-    final steps = ['PENDING', 'PROCESSED', 'PACKAGED'];
-    final normalized = currentStatus.toUpperCase();
-    int currentStepIndex = steps.indexOf(normalized);
-    if (currentStepIndex < 0) currentStepIndex = 0;
+  @override
+  Widget build(BuildContext context) {
+    final isDark = context.isDark;
 
+    if (isLoading) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator.adaptive()),
+      );
+    }
+
+    final req = request;
+    if (req == null) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Not Found')),
+        body: const Center(child: Text('Pickup request not found.')),
+      );
+    }
+
+    final currentStatus = (req['status'] ?? 'pending').toString().toLowerCase();
+    final isPackaged = req['packaged'] == true;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(
+          'Pickup Request #${req['id']}',
+          style: GoogleFonts.comfortaa(fontWeight: FontWeight.bold, fontSize: 17),
+        ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.edit_outlined, size: 20),
+            onPressed: () async {
+              final res = await context.pushRoute(AddUpdatePickupRequestRoute(pickupRequest: req));
+              if (res == true) _fetchRequestDetails();
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.delete_outline, color: Colors.red, size: 20),
+            onPressed: isUpdating ? null : _deleteRequest,
+          ),
+        ],
+      ),
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 12.0),
+          children: [
+            // Lifecycle Stepper Card
+            _buildLifecycleStepper(currentStatus, isDark),
+            const Gap(14),
+
+            // Operational Action Buttons Card
+            _buildQuickActionButtons(currentStatus, isPackaged, isDark),
+            const Gap(14),
+
+            // Collection Hub Card
+            if (collectionStation != null) ...[
+              _buildStationCard(collectionStation!, isDark),
+              const Gap(14),
+            ],
+
+            // Logistics Partner & Region Details
+            _buildPartnerSummaryCard(req, isDark),
+            const Gap(14),
+
+            // Orders in this request
+            _buildOrdersCard(isDark),
+            const Gap(20),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLifecycleStepper(String status, bool isDark) {
+    final steps = ['pending', 'packaged', 'picked_up', 'at_station', 'completed'];
+    final labels = ['Pending', 'Packaged', 'Picked Up', 'At Hub', 'Completed'];
+
+    int activeIndex = steps.indexOf(status);
+    if (activeIndex == -1) activeIndex = 0;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E2419) : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: isDark ? const Color(0xFF2E3D22) : Colors.grey.shade200),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Pickup Progress',
+            style: GoogleFonts.comfortaa(fontSize: 14, fontWeight: FontWeight.bold),
+          ),
+          const Gap(14),
+          Row(
+            children: List.generate(steps.length * 2 - 1, (index) {
+              if (index.isOdd) {
+                final stepIdx = index ~/ 2;
+                final isDone = stepIdx < activeIndex;
+                return Expanded(
+                  child: Container(
+                    height: 3,
+                    color: isDone ? const Color(0xFF1B3A0A) : (isDark ? Colors.white12 : Colors.grey.shade300),
+                  ),
+                );
+              } else {
+                final stepIdx = index ~/ 2;
+                final isPassed = stepIdx <= activeIndex;
+                final isCurrent = stepIdx == activeIndex;
+
+                return Column(
+                  children: [
+                    Container(
+                      width: 26,
+                      height: 26,
+                      decoration: BoxDecoration(
+                        color: isPassed ? const Color(0xFF1B3A0A) : (isDark ? Colors.white10 : Colors.grey.shade200),
+                        shape: BoxShape.circle,
+                        border: isCurrent ? Border.all(color: const Color(0xFFE48629), width: 2) : null,
+                      ),
+                      child: Icon(
+                        isPassed ? Icons.check : Icons.circle,
+                        size: 13,
+                        color: isPassed ? Colors.white : Colors.grey,
+                      ),
+                    ),
+                    const Gap(4),
+                    Text(
+                      labels[stepIdx],
+                      style: TextStyle(
+                        fontSize: 9.5,
+                        fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
+                        color: isCurrent
+                            ? const Color(0xFFE48629)
+                            : (isDark ? Colors.white70 : Colors.black87),
+                      ),
+                    ),
+                  ],
+                );
+              }
+            }),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildQuickActionButtons(String status, bool isPackaged, bool isDark) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF242017) : const Color(0xFFFFFDF5),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE48629).withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: const [
+              Icon(Icons.touch_app_rounded, color: Color(0xFFE48629), size: 18),
+              Gap(8),
+              Text(
+                'Quick Actions',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5),
+              ),
+            ],
+          ),
+          const Gap(10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              if (!isPackaged)
+                ElevatedButton.icon(
+                  onPressed: isUpdating ? null : () => _updateStatus('packaged', markPackaged: true),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF1B3A0A),
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  icon: const Icon(Icons.inventory_2_rounded, size: 16),
+                  label: const Text('Mark Packaged', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                ),
+              if (status == 'pending' || status == 'packaged')
+                OutlinedButton.icon(
+                  onPressed: isUpdating ? null : () => _updateStatus('picked_up'),
+                  style: OutlinedButton.styleFrom(
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  icon: const Icon(Icons.local_shipping_rounded, size: 16, color: Color(0xFF2563EB)),
+                  label: const Text('Confirm Pickup', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                ),
+              if (status == 'picked_up')
+                OutlinedButton.icon(
+                  onPressed: isUpdating ? null : () => _updateStatus('at_station'),
+                  style: OutlinedButton.styleFrom(
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  icon: const Icon(Icons.store_mall_directory_rounded, size: 16, color: Color(0xFF7C3AED)),
+                  label: const Text('Arrived at Hub', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                ),
+              if (status != 'completed')
+                OutlinedButton.icon(
+                  onPressed: isUpdating ? null : () => _updateStatus('completed'),
+                  style: OutlinedButton.styleFrom(
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  icon: const Icon(Icons.done_all_rounded, size: 16, color: Colors.green),
+                  label: const Text('Mark Completed', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStationCard(Map<String, dynamic> station, bool isDark) {
     return Card(
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: Colors.grey.withValues(alpha: 0.2)),
+        side: BorderSide(color: isDark ? Colors.white12 : Colors.grey.shade200),
       ),
       child: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -234,79 +456,20 @@ class _PickupRequestsDetailsViewState extends State<PickupRequestsDetailsView> {
           children: [
             Row(
               children: [
-                const Icon(CupertinoIcons.cube_box, size: 20, color: Color(0xFFE48629)),
+                const Icon(Icons.store_mall_directory_rounded, color: Color(0xFF1B3A0A), size: 20),
                 const Gap(8),
-                Text(
-                  'Pickup Process Timeline',
-                  style: context.bodyLarge?.copyWith(fontWeight: FontWeight.bold),
-                ),
+                Text('Assigned Collection Hub', style: GoogleFonts.comfortaa(fontWeight: FontWeight.bold, fontSize: 14)),
               ],
             ),
-            const Gap(16),
+            const Gap(10),
+            Text(station['name'] ?? 'Collection Station', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14.5)),
+            const Gap(4),
             Row(
-              children: List.generate(steps.length, (index) {
-                final isPassed = index <= currentStepIndex;
-                final isCurrent = index == currentStepIndex;
-                final stepTitle = steps[index];
-
-                Color stepColor;
-                if (isCurrent) {
-                  stepColor = const Color(0xFFE48629);
-                } else if (isPassed) {
-                  stepColor = Colors.green;
-                } else {
-                  stepColor = Colors.grey.shade400;
-                }
-
-                return Expanded(
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          children: [
-                            Container(
-                              width: 32,
-                              height: 32,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: stepColor.withValues(alpha: 0.15),
-                                border: Border.all(color: stepColor, width: 2),
-                              ),
-                              child: Center(
-                                child: isPassed && !isCurrent
-                                    ? Icon(Icons.check, size: 16, color: stepColor)
-                                    : Text(
-                                        '${index + 1}',
-                                        style: TextStyle(
-                                          color: stepColor,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                              ),
-                            ),
-                            const Gap(6),
-                            Text(
-                              stepTitle,
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
-                                color: isCurrent ? stepColor : ColorManager.manatee,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      if (index < steps.length - 1)
-                        Expanded(
-                          child: Container(
-                            height: 2,
-                            color: index < currentStepIndex ? Colors.green : Colors.grey.shade300,
-                          ),
-                        ),
-                    ],
-                  ),
-                );
-              }),
+              children: [
+                const Icon(Icons.location_on_rounded, size: 15, color: Color(0xFFE48629)),
+                const Gap(6),
+                Expanded(child: Text(station['address'] ?? 'No address provided', style: const TextStyle(fontSize: 12))),
+              ],
             ),
           ],
         ),
@@ -314,297 +477,197 @@ class _PickupRequestsDetailsViewState extends State<PickupRequestsDetailsView> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    if (isLoading || request == null) {
-      return Scaffold(
-        appBar: AppBar(title: const Text('Pickup Request Details')),
-        body: const Center(child: CircularProgressIndicator.adaptive()),
-      );
-    }
+  Widget _buildPartnerSummaryCard(Map<String, dynamic> req, bool isDark) {
+    final note = req['note']?.toString();
+    final logisticsName = req['resolved_logistics_name'] ?? 'Afriomarkets Fleet';
+    final regionName = req['resolved_region_name'] ?? 'Universal';
 
-    final req = request!;
-    final manatee = ColorManager.manatee;
-    final smallTextStyle = context.bodySmall;
-    final mediumTextStyle = context.bodyMedium;
-    final status = req['status']?.toString().toUpperCase() ?? 'PENDING';
-    final regionName = req['resolved_region_name']?.toString() ?? 'N/A';
-    final logisticsName = req['resolved_logistics_name']?.toString() ?? 'N/A';
-    final confirmPayment = req['confirm_payment'] as bool? ?? false;
-
-    DateTime? createdAt;
-    if (req['created_at'] != null) {
-      createdAt = DateTime.tryParse(req['created_at'].toString());
-    }
-    final dateString = createdAt != null ? DateFormat.yMMMd().add_jm().format(createdAt) : 'N/A';
-
-    Color statusColor;
-    if (status == 'PACKAGED') {
-      statusColor = Colors.green;
-    } else if (status == 'PROCESSED') {
-      statusColor = Colors.blue;
-    } else {
-      statusColor = Colors.orange;
-    }
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Pickup Request Details'),
-        actions: [
-          IconButton(
-            icon: const Icon(CupertinoIcons.pencil_circle, color: Color(0xFFE48629)),
-            tooltip: 'Edit Pickup Request',
-            onPressed: () async {
-              final updated = await context.pushRoute(
-                AddUpdatePickupRequestRoute(pickupRequest: req),
-              );
-              if (updated == true) {
-                _fetchRequestDetails();
-              }
-            },
-          ),
-          IconButton(
-            icon: const Icon(CupertinoIcons.trash, color: Colors.red),
-            tooltip: 'Delete Pickup Request',
-            onPressed: _deleteRequest,
-          ),
-        ],
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: isDark ? Colors.white12 : Colors.grey.shade200),
       ),
-      body: SafeArea(
-        child: isUpdating
-            ? const Center(child: CircularProgressIndicator.adaptive())
-            : RefreshIndicator(
-                onRefresh: _fetchRequestDetails,
-                child: ListView(
-                  padding: const EdgeInsets.all(12.0),
-                  children: [
-                    // Status Header Card
-                    Card(
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                        side: BorderSide(color: statusColor.withValues(alpha: 0.3)),
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.all(16.0),
-                        child: Column(
-                          children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text('Status', style: smallTextStyle?.copyWith(color: manatee)),
-                                    const Gap(4),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                      decoration: BoxDecoration(
-                                        color: statusColor.withValues(alpha: 0.12),
-                                        borderRadius: BorderRadius.circular(20),
-                                        border: Border.all(color: statusColor.withValues(alpha: 0.5)),
-                                      ),
-                                      child: Text(
-                                        status,
-                                        style: context.bodyMedium?.copyWith(
-                                          color: statusColor,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                DropdownButtonHideUnderline(
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                                    decoration: BoxDecoration(
-                                      color: Theme.of(context).cardColor,
-                                      borderRadius: BorderRadius.circular(12),
-                                      border: Border.all(color: Colors.grey.withValues(alpha: 0.3)),
-                                    ),
-                                    child: DropdownButton<String>(
-                                      value: status == 'PENDING'
-                                          ? 'Pending'
-                                          : status == 'PROCESSED'
-                                              ? 'Processed'
-                                              : 'Packaged',
-                                      onChanged: (val) {
-                                        if (val != null) _updateStatus(val);
-                                      },
-                                      items: ['Pending', 'Processed', 'Packaged']
-                                          .map((s) => DropdownMenuItem(value: s, child: Text(s)))
-                                          .toList(),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const Divider(height: 24),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text('Payment Confirmation', style: mediumTextStyle?.copyWith(fontWeight: FontWeight.bold)),
-                                    Text(
-                                      confirmPayment ? 'Payment verified in wallet' : 'Pending wallet payment check',
-                                      style: smallTextStyle?.copyWith(color: manatee),
-                                    ),
-                                  ],
-                                ),
-                                Switch.adaptive(
-                                  value: confirmPayment,
-                                  activeTrackColor: const Color(0xFFE48629),
-                                  onChanged: _updateConfirmPayment,
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.info_outline_rounded, color: Color(0xFFE48629), size: 20),
+                const Gap(8),
+                Text('Request Summary', style: GoogleFonts.comfortaa(fontWeight: FontWeight.bold, fontSize: 14)),
+              ],
+            ),
+            const Gap(12),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('Logistics Partner:', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                Text(logisticsName, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+              ],
+            ),
+            const Divider(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('Operating Region:', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                Text(regionName, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+              ],
+            ),
+            if (note != null && note.isNotEmpty) ...[
+              const Divider(height: 16),
+              const Text('Rider Pickup Notes:', style: TextStyle(fontSize: 12, color: Colors.grey)),
+              const Gap(4),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: isDark ? Colors.white.withValues(alpha: 0.04) : Colors.grey.shade50,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(note, style: const TextStyle(fontSize: 12, fontStyle: FontStyle.italic)),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildOrdersCard(bool isDark) {
+    final orderIds = _parseOrderIds(request?['order_ids']);
+    final confirmations = request?['order_confirmations'];
+    Map<String, dynamic> confMap = {};
+    if (confirmations is List) {
+      for (final c in confirmations) {
+        if (c is Map && c['order_id'] != null) {
+          confMap[c['order_id'].toString()] = c;
+        }
+      }
+    }
+
+    final totalCount = orderIds.isNotEmpty ? orderIds.length : orders.length;
+
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: isDark ? Colors.white12 : Colors.grey.shade200),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Linked Orders ($totalCount)',
+                  style: GoogleFonts.comfortaa(fontWeight: FontWeight.bold, fontSize: 14),
+                ),
+                if (isLoadingOrders)
+                  const SizedBox(width: 16, height: 16, child: CircularProgressIndicator.adaptive(strokeWidth: 2)),
+              ],
+            ),
+            const Gap(12),
+            if (orderIds.isEmpty && orders.isEmpty && !isLoadingOrders)
+              const Padding(
+                padding: EdgeInsets.all(12.0),
+                child: Text('No order records linked to this pickup request.', style: TextStyle(color: Colors.grey, fontSize: 12)),
+              )
+            else if (orders.isNotEmpty)
+              ...orders.map((order) {
+                final total = order.total != null
+                    ? '${(order.total! / 100).toStringAsFixed(2)} ${order.currencyCode.toUpperCase()}'
+                    : 'N/A';
+                return ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE48629).withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(10),
                     ),
-                    const Gap(12),
-
-                    // Timeline Card
-                    _buildProcessTimeline(status),
-                    const Gap(12),
-
-                    // Metadata card
-                    Card(
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                        side: BorderSide(color: Colors.grey.withValues(alpha: 0.2)),
+                    child: const Icon(Icons.receipt_long_rounded, color: Color(0xFFE48629), size: 18),
+                  ),
+                  title: Text('Order #${order.displayId}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5)),
+                  subtitle: Text('Customer: ${order.customerName} • $total', style: const TextStyle(fontSize: 11.5)),
+                  trailing: const Icon(Icons.chevron_right_rounded, size: 20, color: Colors.grey),
+                  onTap: () => context.pushRoute(OrderDetailsRoute(orderId: order.id)),
+                );
+              })
+            else
+              ...orderIds.map((id) {
+                final conf = confMap[id];
+                final isConfirmed = conf != null;
+                final shortId = id.length > 12 ? id.substring(id.length - 10) : id;
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 8.0),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: isDark ? Colors.white.withValues(alpha: 0.04) : Colors.grey.shade50,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: isDark ? Colors.white12 : Colors.grey.shade200),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFE48629).withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Icon(Icons.receipt_long_rounded, color: Color(0xFFE48629), size: 18),
                       ),
-                      child: Padding(
-                        padding: const EdgeInsets.all(16.0),
+                      const Gap(12),
+                      Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Row(
-                              children: [
-                                const CircleAvatar(
-                                  backgroundColor: Color(0x22E48629),
-                                  child: Icon(CupertinoIcons.building_2_fill, color: Color(0xFFE48629)),
-                                ),
-                                const Gap(12),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text('Logistics Organization', style: smallTextStyle?.copyWith(color: manatee)),
-                                      Text(logisticsName, style: context.bodyLarge?.copyWith(fontWeight: FontWeight.bold)),
-                                    ],
-                                  ),
-                                ),
-                              ],
+                            Text(
+                              'Order #$shortId',
+                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
                             ),
-                            const Divider(height: 24),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text('Region', style: smallTextStyle?.copyWith(color: manatee)),
-                                    const Gap(2),
-                                    Text(regionName, style: context.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
-                                  ],
-                                ),
-                                Column(
-                                  crossAxisAlignment: CrossAxisAlignment.end,
-                                  children: [
-                                    Text('Date Created', style: smallTextStyle?.copyWith(color: manatee)),
-                                    const Gap(2),
-                                    Text(dateString, style: context.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
-                                  ],
-                                ),
-                              ],
+                            const Gap(2),
+                            Text(
+                              id,
+                              style: TextStyle(fontSize: 10, color: Colors.grey.shade600, fontFamily: 'monospace'),
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ],
                         ),
                       ),
-                    ),
-                    const Gap(16),
-
-                    // Associated orders
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          'Associated Orders (${orders.length})',
-                          style: context.bodyLarge?.copyWith(fontWeight: FontWeight.bold),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: isConfirmed
+                              ? const Color(0xFF1B3A0A).withValues(alpha: 0.12)
+                              : Colors.blue.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(6),
                         ),
-                        if (isLoadingOrders)
-                          const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator.adaptive(strokeWidth: 2),
+                        child: Text(
+                          isConfirmed ? 'CONFIRMED' : 'PACKAGED',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                            color: isConfirmed ? const Color(0xFF1B3A0A) : Colors.blue.shade700,
                           ),
-                      ],
-                    ),
-                    const Gap(8),
-                    isLoadingOrders
-                        ? const Center(
-                            child: Padding(
-                              padding: EdgeInsets.all(24.0),
-                              child: CircularProgressIndicator.adaptive(),
-                            ),
-                          )
-                        : orders.isEmpty
-                            ? Card(
-                                elevation: 0,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(16),
-                                  side: BorderSide(color: Colors.grey.withValues(alpha: 0.2)),
-                                ),
-                                child: const Padding(
-                                  padding: EdgeInsets.all(20.0),
-                                  child: Center(
-                                    child: Text('No orders associated with this request.'),
-                                  ),
-                                ),
-                              )
-                            : Column(
-                                children: orders.map((order) {
-                                  final total = order.total != null
-                                      ? '${(order.total! / 100).toStringAsFixed(2)} ${order.currencyCode.toUpperCase()}'
-                                      : 'N/A';
-                                  final customer = order.customerName;
-                                  return Card(
-                                    margin: const EdgeInsets.only(bottom: 10),
-                                    elevation: 0,
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(16),
-                                      side: BorderSide(color: Colors.grey.withValues(alpha: 0.2)),
-                                    ),
-                                    child: ListTile(
-                                      onTap: () {
-                                        context.pushRoute(OrderDetailsRoute(orderId: order.id));
-                                      },
-                                      leading: const CircleAvatar(
-                                        backgroundColor: Color(0x15000000),
-                                        child: Icon(CupertinoIcons.shopping_cart, color: Color(0xFFE48629)),
-                                      ),
-                                      title: Text('Order #${order.displayId}', style: const TextStyle(fontWeight: FontWeight.bold)),
-                                      subtitle: Text('Customer: $customer\nStatus: ${order.paymentStatus?.name.toUpperCase()}'),
-                                      trailing: Column(
-                                        mainAxisAlignment: MainAxisAlignment.center,
-                                        crossAxisAlignment: CrossAxisAlignment.end,
-                                        children: [
-                                          Text(total, style: context.bodyMedium?.copyWith(fontWeight: FontWeight.bold)),
-                                          const Gap(4),
-                                          const Icon(Icons.arrow_forward_ios, size: 12, color: Colors.grey),
-                                        ],
-                                      ),
-                                    ),
-                                  );
-                                }).toList(),
-                              ),
-                  ],
-                ),
-              ),
+                        ),
+                      ),
+                      const Gap(4),
+                      IconButton(
+                        icon: const Icon(Icons.open_in_new_rounded, size: 18),
+                        onPressed: () => context.pushRoute(OrderDetailsRoute(orderId: id)),
+                      ),
+                    ],
+                  ),
+                );
+              }),
+          ],
+        ),
       ),
     );
   }

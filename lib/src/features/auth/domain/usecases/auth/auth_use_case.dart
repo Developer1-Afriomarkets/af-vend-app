@@ -1,3 +1,4 @@
+import 'package:medusa_admin/src/core/services/app_scope_service.dart';
 import 'dart:developer';
 
 import 'package:dio/dio.dart';
@@ -36,6 +37,7 @@ class AuthenticationUseCase {
   final MedusaAdminV2 _medusaAdminV2;
   final InterceptedMedusa _medusav1;
   final FlutterSecureStorage _securePrefs;
+  User? _lastAuthenticatedUser;
 
 
 
@@ -62,22 +64,80 @@ class AuthenticationUseCase {
 
 
         log('Starting V1 login for $email');
-        await _medusav1.admin.auth
-            .createSession(AdminPostAuthReq(email, password))
-            .timeout(const Duration(seconds: 30), onTimeout: () {
-          log('V1 login timed out');
-          throw DioException(
-              requestOptions: RequestOptions(path: '/admin/auth'),
-              type: DioExceptionType.connectionTimeout,
-              message: 'Login timed out');
-        });
+        String? jwtToken;
+        // 1. Try to fetch JWT token via /admin/auth/token (standard Medusa V1 Bearer JWT)
+        try {
+          final tokenRes = await _medusav1.dio.post(
+            '/admin/auth/token',
+            data: {'email': email, 'password': password},
+          );
+          if (tokenRes.data is Map && tokenRes.data['access_token'] != null) {
+            jwtToken = tokenRes.data['access_token'] as String;
+            log('V1 JWT token retrieved: ${jwtToken.substring(0, 10)}...');
+            await _securePrefs.write(key: AppConstants.jwtKey, value: jwtToken);
+            _medusav1.dio.options.headers['Authorization'] = 'Bearer $jwtToken';
+          }
+        } catch (e) {
+          log('V1 /admin/auth/token error or not supported: $e');
+        }
+
+        // 2. Also attempt createSession (sets session cookie and returns user object)
+        try {
+          final authRes = await _medusav1.admin.auth
+              .createSession(AdminPostAuthReq(email, password))
+              .timeout(const Duration(seconds: 30));
+          final u = authRes.user;
+          _lastAuthenticatedUser = User(
+            id: u.id,
+            email: u.email,
+            firstName: u.firstName,
+            lastName: u.lastName,
+          );
+          final userMeta = Map<String, dynamic>.from(u.metadata ?? {});
+          await AppScopeService.setUserMetadata(
+            userMeta,
+            u.role.name,
+          );
+          try {
+            final authMe = await _medusav1.dio.get('/admin/auth');
+            if (authMe.data is Map && authMe.data['user'] is Map) {
+              final raw = authMe.data['user'] as Map<String, dynamic>;
+              final meta = Map<String, dynamic>.from(raw['metadata'] ?? {});
+              if (raw['store_id'] != null && !meta.containsKey('store_id')) {
+                meta['store_id'] = raw['store_id'];
+              }
+              await AppScopeService.setUserMetadata(
+                meta,
+                raw['role']?.toString(),
+              );
+            }
+          } catch (_) {}
+        } catch (e) {
+          log('V1 createSession error: $e');
+          if (jwtToken == null) {
+            if (e is DioException) {
+              return Error(MedusaError.fromHttp(
+                status: e.response?.statusCode,
+                body: e.response?.data,
+                cause: e,
+              ));
+            }
+            rethrow;
+          }
+        }
 
         final token = _medusav1.getCookieToken();
-        log('V1 token retrieved: ${token != null ? 'YES' : 'NO'}');
+        log('V1 cookie token retrieved: ${token != null ? 'YES' : 'NO'}');
         if (token != null) {
+          await _securePrefs.write(key: AppConstants.cookieKey, value: 'connect.sid=$token');
+        }
+
+        if (jwtToken != null) {
+          return Success(jwtToken);
+        } else if (token != null) {
           return Success('connect.sid=$token');
         }
-        return Success('');
+        return const Success('');
       }
 
       final user = await _authenticationRepository
@@ -108,21 +168,26 @@ class AuthenticationUseCase {
   Future<Result<DeleteSessionRes, MedusaError>> logout() async {
     final medusaApiVersion = AuthPreferenceService.medusaApiVersionGetter;
     try {
+      _lastAuthenticatedUser = null;
+      await _securePrefs.delete(key: AppConstants.jwtKey);
+      await _securePrefs.delete(key: AppConstants.cookieKey);
+      await _securePrefs.delete(key: AppConstants.tokenKey);
+      await _securePrefs.delete(key: AppConstants.supabaseTokenKey);
+      _medusav1.dio.options.headers.remove('Authorization');
+      _medusav1.setCookieToken('');
+      _medusav1.setApiKey('');
+
       if (medusaApiVersion == MedusaApiVersion.v1) {
         final authType = AuthPreferenceService.authTypeGetter;
         if (authType == AuthenticationType.supabase) {
            await sb.Supabase.instance.client.auth.signOut();
-           await _securePrefs.delete(key: AppConstants.supabaseTokenKey);
-           _medusav1.setApiKey('');
            return const Success(DeleteSessionRes(success: true));
         }
-        await _medusav1.admin.auth.deleteSession();
-        _medusav1.setCookieToken('');
+        try {
+          await _medusav1.admin.auth.deleteSession();
+        } catch (_) {}
         return const Success(DeleteSessionRes(success: true));
       }
-
-
-
 
       final result = await _authenticationRepository.logout();
       return Success(result);
@@ -165,6 +230,12 @@ class AuthenticationUseCase {
     try {
       if (medusaApiVersion == MedusaApiVersion.v1) {
         final authType = AuthPreferenceService.authTypeGetter;
+
+        final jwt = await _securePrefs.read(key: AppConstants.jwtKey);
+        if (jwt != null && jwt.isNotEmpty) {
+          _medusav1.dio.options.headers['Authorization'] = 'Bearer $jwt';
+        }
+
         if (authType == AuthenticationType.cookie &&
             _medusav1.getCookieToken() == null) {
           final cookie = await _securePrefs.read(key: AppConstants.cookieKey);
@@ -186,18 +257,57 @@ class AuthenticationUseCase {
           }
         }
 
-
-        final result = await _medusav1.admin.auth.getSession();
-        if (result.user != null) {
-          final u = result.user!;
-          return Success(User(
+        try {
+          final result = await _medusav1.admin.auth.getSession();
+          final u = result.user;
+          final user = User(
             id: u.id,
             email: u.email,
             firstName: u.firstName,
             lastName: u.lastName,
-          ));
+          );
+          _lastAuthenticatedUser = user;
+          final userMeta = Map<String, dynamic>.from(u.metadata ?? {});
+          await AppScopeService.setUserMetadata(
+            userMeta,
+            u.role.name,
+          );
+          try {
+            final authMe = await _medusav1.dio.get('/admin/auth');
+            if (authMe.data is Map && authMe.data['user'] is Map) {
+              final raw = authMe.data['user'] as Map<String, dynamic>;
+              final meta = Map<String, dynamic>.from(raw['metadata'] ?? {});
+              if (raw['store_id'] != null && !meta.containsKey('store_id')) {
+                meta['store_id'] = raw['store_id'];
+              }
+              await AppScopeService.setUserMetadata(
+                meta,
+                raw['role']?.toString(),
+              );
+            }
+          } catch (_) {
+            try {
+              final authMe = await _medusav1.dio.get('/admin/auth');
+              if (authMe.data is Map && authMe.data['user'] is Map) {
+                final raw = authMe.data['user'] as Map<String, dynamic>;
+                if (raw['metadata'] is Map) {
+                  await AppScopeService.setUserMetadata(
+                    Map<String, dynamic>.from(raw['metadata']),
+                    raw['role']?.toString(),
+                  );
+                }
+              }
+            } catch (_) {}
+          }
+          return Success(user);
+        } catch (e) {
+          log('getSession failed: $e');
+          if (_lastAuthenticatedUser != null) {
+            log('Using cached _lastAuthenticatedUser');
+            return Success(_lastAuthenticatedUser!);
+          }
+          rethrow;
         }
-
       }
 
 

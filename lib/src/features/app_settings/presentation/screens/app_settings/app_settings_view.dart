@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:adaptive_dialog/adaptive_dialog.dart';
 import 'package:auto_route/auto_route.dart';
 import 'package:flex_color_scheme/flex_color_scheme.dart';
@@ -64,7 +65,13 @@ class _AppSettingsViewState extends State<AppSettingsView> {
       drawerEdgeDragWidth: context.drawerEdgeDragWidth,
       body: NestedScrollView(
         headerSliverBuilder: (context, innerBoxIsScrolled) => [
-          const MedusaSliverAppBar(title: Text('App Settings')),
+          MedusaSliverAppBar(
+            title: const Text('App Settings'),
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
+              onPressed: () => context.maybePop(),
+            ),
+          ),
         ],
         body: BlocBuilder<LanguageCubit, LanguageState>(
           builder: (context, languageState) {
@@ -215,7 +222,7 @@ class _AppSettingsViewState extends State<AppSettingsView> {
                     SettingsSection(
                       title: const Text('Date & Time'),
                       tiles: <SettingsTile>[
-                        if (Platform.isIOS)
+                        if ((defaultTargetPlatform == TargetPlatform.iOS))
                           SettingsTile.switchTile(
                             title: const Text('Use Android date picker'),
                             activeSwitchColor: ColorManager.primary,

@@ -1,3 +1,5 @@
+import 'package:medusa_admin/src/core/services/app_scope_service.dart';
+import 'package:medusa_admin/src/features/dashboard/presentation/widgets/scope_switcher_sheet.dart';
 import 'package:adaptive_dialog/adaptive_dialog.dart';
 import 'package:auto_route/auto_route.dart';
 import 'package:flutter/cupertino.dart';
@@ -10,7 +12,6 @@ import 'package:medusa_admin/src/core/extensions/theme_mode_extension.dart';
 import 'package:medusa_admin/src/core/utils/easy_loading.dart';
 import 'package:medusa_admin/src/core/utils/medusa_icons_icons.dart';
 import 'package:medusa_admin/src/features/app_settings/data/service/preference_service.dart';
-import 'package:medusa_admin/src/core/extensions/text_style_extension.dart';
 import 'package:medusa_admin/src/core/routing/app_router.dart';
 import 'package:medusa_admin/src/core/extensions/context_extension.dart';
 import 'package:medusa_admin/src/features/app_settings/presentation/bloc/app_update/app_update_bloc.dart';
@@ -55,59 +56,176 @@ class _AppDrawerState extends State<AppDrawer> {
     String appName = packageInfo.appName;
     String version = packageInfo.version;
 
-    final destinations = [
-      DrawerDestination(
-        icon: const Icon(CupertinoIcons.graph_square),
-        label: 'Dashboard',
-        route: const DashboardOverviewRoute(),
-      ),
-      DrawerDestination(
-        icon: const Icon(CupertinoIcons.cart),
-        label: 'Orders',
-        route: const OrdersRoute(),
-      ),
-      const DrawerDestination.divider(),
-      DrawerDestination(
-        icon: const Icon(MedusaIcons.tag),
-        label: 'Products',
-        route: const ProductsRoute(),
-      ),
-      const DrawerDestination.divider(),
-      DrawerDestination(
-        icon: const Icon(Icons.discount_outlined),
-        label: 'Promotions',
-        route: const PromotionsRoute(),
-      ),
-      const DrawerDestination.divider(),
-      DrawerDestination(
-        icon: const Icon(CupertinoIcons.cube_box),
-        label: 'Pickup Requests',
-        route: PickupRequestsRoute(),
-      ),
-      DrawerDestination(
-        icon: const Icon(Icons.local_shipping),
-        label: 'Deliveries',
-        route: DeliveriesRoute(),
-      ),
-      const DrawerDestination.divider(),
-      DrawerDestination(
-        icon: const Icon(Icons.settings_applications),
-        label: 'Store Settings',
-        route: const StoreSettingsRoute(),
-      ),
-      DrawerDestination(
-        icon: const Icon(CupertinoIcons.settings),
-        label: 'App Settings',
-        route: const AppSettingsRoute(),
-      ),
-      DrawerDestination(
-        icon: const Icon(Icons.logout, color: Colors.red),
-        label: 'Sign Out',
-        onTap: () => _signOut(context),
-      ),
-    ];
-
-    Widget _divider() => Padding(
+    List<DrawerDestination> _getDestinations(AppScope activeScope, BuildContext context) {
+      switch (activeScope) {
+        case AppScope.vendor:
+          return [
+            const DrawerDestination(
+              icon: Icon(CupertinoIcons.graph_square),
+              label: 'Dashboard',
+              route: DashboardOverviewRoute(),
+            ),
+            const DrawerDestination(
+              icon: Icon(CupertinoIcons.cart),
+              label: 'Orders',
+              route: OrdersRoute(),
+            ),
+            const DrawerDestination.divider(),
+            const DrawerDestination(
+              icon: Icon(MedusaIcons.tag),
+              label: 'Products',
+              route: ProductsRoute(),
+            ),
+            const DrawerDestination.divider(),
+            const DrawerDestination(
+              icon: Icon(Icons.discount_outlined),
+              label: 'Promotions',
+              route: PromotionsRoute(),
+            ),
+            const DrawerDestination.divider(),
+            DrawerDestination(
+              icon: const Icon(CupertinoIcons.cube_box),
+              label: 'Pickup Requests',
+              route: PickupRequestsRoute(),
+            ),
+            DrawerDestination(
+              icon: const Icon(Icons.local_shipping),
+              label: 'Deliveries',
+              route: DeliveriesRoute(),
+            ),
+            const DrawerDestination.divider(),
+            const DrawerDestination(
+              icon: Icon(Icons.settings_applications),
+              label: 'Store Settings',
+              route: StoreSettingsRoute(),
+            ),
+            const DrawerDestination(
+              icon: Icon(CupertinoIcons.settings),
+              label: 'App Settings',
+              route: AppSettingsRoute(),
+            ),
+            DrawerDestination(
+              icon: const Icon(Icons.logout, color: Colors.red),
+              label: 'Sign Out',
+              onTap: () => _signOut(context),
+            ),
+          ];
+        case AppScope.logistics:
+          return [
+            const DrawerDestination(
+              icon: Icon(Icons.hub_outlined),
+              label: 'Operations Hub',
+              route: DashboardOverviewRoute(),
+            ),
+            DrawerDestination(
+              icon: const Icon(CupertinoIcons.cube_box),
+              label: 'Inbound Pickups',
+              route: PickupRequestsRoute(),
+            ),
+            DrawerDestination(
+              icon: const Icon(Icons.local_shipping_rounded),
+              label: 'Shipments & Manifest',
+              route: DeliveriesRoute(),
+            ),
+            const DrawerDestination.divider(),
+            const DrawerDestination(
+              icon: Icon(Icons.business_outlined),
+              label: 'Logistics Settings',
+              route: StoreSettingsRoute(),
+            ),
+            const DrawerDestination(
+              icon: Icon(CupertinoIcons.settings),
+              label: 'App Settings',
+              route: AppSettingsRoute(),
+            ),
+            DrawerDestination(
+              icon: const Icon(Icons.logout, color: Colors.red),
+              label: 'Sign Out',
+              onTap: () => _signOut(context),
+            ),
+          ];
+        case AppScope.rider:
+          return [
+            const DrawerDestination(
+              icon: Icon(Icons.speed_rounded),
+              label: 'Cockpit & Shift',
+              route: DashboardOverviewRoute(),
+            ),
+            DrawerDestination(
+              icon: const Icon(CupertinoIcons.cube_box),
+              label: 'Assigned Pickups',
+              route: PickupRequestsRoute(),
+            ),
+            DrawerDestination(
+              icon: const Icon(Icons.two_wheeler_rounded),
+              label: 'My Delivery Runs',
+              route: DeliveriesRoute(),
+            ),
+            const DrawerDestination.divider(),
+            const DrawerDestination(
+              icon: Icon(CupertinoIcons.settings),
+              label: 'App Settings',
+              route: AppSettingsRoute(),
+            ),
+            DrawerDestination(
+              icon: const Icon(Icons.logout, color: Colors.red),
+              label: 'Sign Out',
+              onTap: () => _signOut(context),
+            ),
+          ];
+        case AppScope.admin:
+          return [
+            const DrawerDestination(
+              icon: Icon(Icons.admin_panel_settings_outlined),
+              label: 'HQ Overview',
+              route: DashboardOverviewRoute(),
+            ),
+            const DrawerDestination(
+              icon: Icon(CupertinoIcons.cart),
+              label: 'All Orders',
+              route: OrdersRoute(),
+            ),
+            const DrawerDestination(
+              icon: Icon(MedusaIcons.tag),
+              label: 'Products Catalog',
+              route: ProductsRoute(),
+            ),
+            const DrawerDestination(
+              icon: Icon(Icons.discount_outlined),
+              label: 'Promotions',
+              route: PromotionsRoute(),
+            ),
+            const DrawerDestination.divider(),
+            DrawerDestination(
+              icon: const Icon(CupertinoIcons.cube_box),
+              label: 'All Pickups',
+              route: PickupRequestsRoute(),
+            ),
+            DrawerDestination(
+              icon: const Icon(Icons.local_shipping),
+              label: 'All Deliveries',
+              route: DeliveriesRoute(),
+            ),
+            const DrawerDestination.divider(),
+            const DrawerDestination(
+              icon: Icon(Icons.settings_applications),
+              label: 'Platform Settings',
+              route: StoreSettingsRoute(),
+            ),
+            const DrawerDestination(
+              icon: Icon(CupertinoIcons.settings),
+              label: 'App Settings',
+              route: AppSettingsRoute(),
+            ),
+            DrawerDestination(
+              icon: const Icon(Icons.logout, color: Colors.red),
+              label: 'Sign Out',
+              onTap: () => _signOut(context),
+            ),
+          ];
+      }
+    }
+Widget _divider() => Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
           child: Container(
             height: 1,
@@ -205,7 +323,7 @@ class _AppDrawerState extends State<AppDrawer> {
                                           storeName ?? '',
                                           style: const TextStyle(
                                             color: Colors.white,
-                                            fontSize: 15,
+                                            fontSize: 14,
                                             fontWeight: FontWeight.bold,
                                           ),
                                           overflow: TextOverflow.ellipsis,
@@ -213,7 +331,8 @@ class _AppDrawerState extends State<AppDrawer> {
                                       );
                                     },
                                   ),
-                                  const Icon(Icons.arrow_drop_down, color: Color(0xFFF0EAD6)),
+                                  const Gap(6),
+                                  const ScopeBadge(compact: true),
                                 ],
                               ),
                             ),
@@ -287,65 +406,71 @@ class _AppDrawerState extends State<AppDrawer> {
               const Gap(10),
               // Destinations Scrollable View
               Expanded(
-                child: ListView(
-                  padding: EdgeInsets.zero,
-                  children: [
-                    ...destinations.map((e) {
-                      if (e.isDivider) {
-                        return _divider();
-                      }
-                      final isSelected = () {
-                        final activeRouteName = context.tabsRouter.current.name;
-                        return e.route?.routeName == activeRouteName;
-                      }();
-                      
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 3.0),
-                        child: InkWell(
-                          onTap: () {
-                            if (e.onTap != null) {
-                              e.onTap!();
-                              return;
-                            }
-                            if (e.route != null) {
-                              context.closeDrawer();
-                              final routeIndex = getRouteIndex(e.route!);
-                              context.tabsRouter.setActiveIndex(routeIndex);
-                            }
-                          },
-                          borderRadius: BorderRadius.circular(12),
-                          splashColor: const Color(0xFFE48629).withOpacity(0.15),
-                          child: Container(
-                            decoration: BoxDecoration(
-                              color: isSelected ? const Color(0xFFE48629).withOpacity(0.12) : Colors.transparent,
+                child: ValueListenableBuilder<AppScope>(
+                  valueListenable: AppScopeService.activeScopeNotifier,
+                  builder: (context, activeScope, _) {
+                    final destinations = _getDestinations(activeScope, context);
+                    return ListView(
+                      padding: EdgeInsets.zero,
+                      children: [
+                        ...destinations.map((e) {
+                          if (e.isDivider) {
+                            return _divider();
+                          }
+                          final isSelected = () {
+                            final activeRouteName = context.tabsRouter.current.name;
+                            return e.route?.routeName == activeRouteName;
+                          }();
+                          
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 3.0),
+                            child: InkWell(
+                              onTap: () {
+                                if (e.onTap != null) {
+                                  e.onTap!();
+                                  return;
+                                }
+                                if (e.route != null) {
+                                  context.closeDrawer();
+                                  final routeIndex = getRouteIndex(e.route!);
+                                  context.tabsRouter.setActiveIndex(routeIndex);
+                                }
+                              },
                               borderRadius: BorderRadius.circular(12),
-                              border: isSelected ? Border.all(color: const Color(0xFFE48629).withOpacity(0.35), width: 1.0) : null,
-                            ),
-                            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
-                            child: Row(
-                              children: [
-                                Theme(
-                                  data: ThemeData(iconTheme: IconThemeData(color: isSelected ? const Color(0xFFE48629) : const Color(0xFFF0EAD6).withOpacity(0.7))),
-                                  child: e.icon!,
+                              splashColor: const Color(0xFFE48629).withValues(alpha: 0.15),
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  color: isSelected ? const Color(0xFFE48629).withValues(alpha: 0.12) : Colors.transparent,
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: isSelected ? Border.all(color: const Color(0xFFE48629).withValues(alpha: 0.35), width: 1.0) : null,
                                 ),
-                                const SizedBox(width: 14),
-                                Expanded(
-                                  child: Text(
-                                    e.label!,
-                                    style: TextStyle(
-                                      color: isSelected ? Colors.white : const Color(0xFFF0EAD6).withOpacity(0.85),
-                                      fontSize: 14.5,
-                                      fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                                padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
+                                child: Row(
+                                  children: [
+                                    Theme(
+                                      data: ThemeData(iconTheme: IconThemeData(color: isSelected ? const Color(0xFFE48629) : const Color(0xFFF0EAD6).withValues(alpha: 0.7))),
+                                      child: e.icon!,
                                     ),
-                                  ),
+                                    const SizedBox(width: 14),
+                                    Expanded(
+                                      child: Text(
+                                        e.label!,
+                                        style: TextStyle(
+                                          color: isSelected ? Colors.white : const Color(0xFFF0EAD6).withValues(alpha: 0.85),
+                                          fontSize: 14.5,
+                                          fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                              ],
+                              ),
                             ),
-                          ),
-                        ),
-                      );
-                    }),
-                  ],
+                          );
+                        }),
+                      ],
+                    );
+                  },
                 ),
               ),
               // Footer

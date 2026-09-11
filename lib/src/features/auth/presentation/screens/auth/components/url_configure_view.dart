@@ -127,9 +127,9 @@ class _UrlConfigureViewState extends State<UrlConfigureView> {
           await authPreferenceService.clearEmail();
           // close the app
           if (!kIsWeb) {
-            if (Platform.isAndroid) {
+            if ((defaultTargetPlatform == TargetPlatform.android)) {
               SystemNavigator.pop();
-            } else if (Platform.isIOS) {
+            } else if ((defaultTargetPlatform == TargetPlatform.iOS)) {
               exit(0);
             }
           }

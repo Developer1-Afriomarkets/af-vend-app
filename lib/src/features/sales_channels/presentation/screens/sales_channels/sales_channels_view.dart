@@ -85,11 +85,15 @@ class _SalesChannelsViewState extends State<SalesChannelsView> {
       child: Scaffold(
         appBar: AppBar(
           systemOverlayStyle: context.defaultSystemUiOverlayStyle,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
+            onPressed: () => context.maybePop(),
+          ),
           title: const Text('Sales Channels'),
           bottom: PreferredSize(
-              preferredSize: const Size.fromHeight(kToolbarHeight / 2),
+              preferredSize: const Size.fromHeight(38.0),
               child: Container(
-                height: kToolbarHeight / 2,
+                height: 38.0,
                 alignment: Alignment.center,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,

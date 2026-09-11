@@ -1,3 +1,4 @@
+import 'package:medusa_admin/src/features/store_details/presentation/bloc/store/store_state_extension.dart';
 import 'package:medusa_admin/src/core/routing/app_router.dart';
 import 'package:adaptive_dialog/adaptive_dialog.dart';
 import 'package:auto_route/auto_route.dart';
@@ -37,13 +38,16 @@ class _StoreDetailsViewState extends State<StoreDetailsView> {
     storeBloc = StoreBloc.instance;
     currenciesCubit = CurrenciesCubit.instance;
     regionBloc = RegionCrudBloc.instance;
-    final store =
-        context.read<StoreBloc>().state.whenOrNull(stores: (stores) => stores.stores.firstOrNull);
-    if (store == null) {
-      // context.read<StoreBloc>().add(const StoreEvent.loadStore());
-      context.maybePop();
-      return;
+    final store = context.read<StoreBloc>().state.currentStore;
+    if (store != null) {
+      _initStore(store);
+    } else {
+      context.read<StoreBloc>().add(const StoreEvent.loadStores(null));
     }
+    super.initState();
+  }
+
+  void _initStore(Store store) {
     final currencyCodes = store.supportedCurrencies?.map((e) => e.currencyCode).toList() ?? [];
     if (currencyCodes.isEmpty) {
       currencyCodes.add('usd');
@@ -56,7 +60,6 @@ class _StoreDetailsViewState extends State<StoreDetailsView> {
     }
 
     currenciesCubit.loadAll(queryParameters: queryParameters);
-    super.initState();
   }
 
   @override
@@ -79,14 +82,9 @@ class _StoreDetailsViewState extends State<StoreDetailsView> {
             loading: () => loading(),
             store: (store) {
               dismissLoading();
-              // context.maybePop();
               context.read<StoreBloc>().add(const StoreEvent.loadStores(null));
               context.showSnackBar('Store details updated successfully');
-              final currencyCodes =
-                  store.supportedCurrencies?.map((e) => e.currency.code).toList() ?? [];
-              currenciesCubit.loadAll(
-                  queryParameters:
-                      currencyCodes.asMap().map((key, value) => MapEntry('code[$key]', value)));
+              _initStore(store);
               selectedCurrencies.clear();
               setState(() {});
             },
@@ -98,7 +96,19 @@ class _StoreDetailsViewState extends State<StoreDetailsView> {
       },
       child: BlocBuilder<StoreBloc, StoreState>(
         builder: (context, state) {
-          final store = state.whenOrNull(stores: (stores) => stores.stores.firstOrNull);
+          final store = state.currentStore;
+          if (store == null) {
+            return Scaffold(
+              appBar: AppBar(
+                leading: IconButton(
+                  icon: const Icon(Icons.arrow_back),
+                  onPressed: () => context.maybePop(),
+                ),
+                title: const Text('Store Details'),
+              ),
+              body: const Center(child: CircularProgressIndicator()),
+            );
+          }
           return HideKeyboard(
             child: Scaffold(
               appBar: AppBar(

@@ -1,5 +1,4 @@
-import 'package:medusa_admin/src/features/auth/domain/usecases/auth/sign_out_use_case.dart';
-import 'package:medusa_admin/src/core/routing/app_router.dart';
+import 'package:medusa_admin/src/core/services/app_scope_service.dart';
 import 'dart:async';
 import 'dart:developer';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -58,16 +57,19 @@ class AuthenticationBloc extends Bloc<AuthenticationEvent, AuthenticationState> 
     //   await Future.delayed(500.milliseconds).then((value) => emit(const _LoggedOut()));
     // }
     final authType = AuthPreferenceService.authTypeGetter;
-    final String? token;
+    String? token;
     switch (authType) {
       case AuthenticationType.cookie:
         token = await flutterSecureStorage.read(key: AppConstants.cookieKey);
+        token ??= await flutterSecureStorage.read(key: AppConstants.jwtKey);
         break;
       case AuthenticationType.token:
         token = await flutterSecureStorage.read(key: AppConstants.tokenKey);
+        token ??= await flutterSecureStorage.read(key: AppConstants.jwtKey);
         break;
       case AuthenticationType.jwt:
         token = await flutterSecureStorage.read(key: AppConstants.jwtKey);
+        token ??= await flutterSecureStorage.read(key: AppConstants.cookieKey);
         break;
       case AuthenticationType.supabase:
         token = await flutterSecureStorage.read(key: AppConstants.supabaseTokenKey);
@@ -88,7 +90,10 @@ class AuthenticationBloc extends Bloc<AuthenticationEvent, AuthenticationState> 
       return;
     }
     authPreferenceService.setIsAuthenticated(true);
-    userResult.when((user) => emit(_LoggedIn(user)), (error) => emit(_Error(error)));
+    userResult.when((user) {
+      AppScopeService.updateAllowedScopesFromUser(user);
+      emit(_LoggedIn(user));
+    }, (error) => emit(_Error(error)));
     // }
   }
 
@@ -100,11 +105,18 @@ class AuthenticationBloc extends Bloc<AuthenticationEvent, AuthenticationState> 
 
     final result = await authenticationUseCase.login(email: event.email, password: event.password);
     await result.when((token) async {
-      await flutterSecureStorage.write(key: AppConstants.cookieKey, value: token);
+      if (token.startsWith('connect.sid=')) {
+        await flutterSecureStorage.write(key: AppConstants.cookieKey, value: token);
+      } else if (token.isNotEmpty) {
+        await flutterSecureStorage.write(key: AppConstants.jwtKey, value: token);
+      }
       authPreferenceService.setIsAuthenticated(true);
       authPreferenceService.setEmail(event.email);
       final userResult = await authenticationUseCase.getCurrentUser();
-      userResult.when((user) => emit(_LoggedIn(user)), (e) => emit(_Error(e)));
+      userResult.when((user) {
+        AppScopeService.updateAllowedScopesFromUser(user);
+        emit(_LoggedIn(user));
+      }, (e) => emit(_Error(e)));
     }, (e) async => emit(_Error(e)));
   }
 
@@ -119,12 +131,10 @@ class AuthenticationBloc extends Bloc<AuthenticationEvent, AuthenticationState> 
     final medusaApiVersion = AuthPreferenceService.medusaApiVersionGetter;
 
     await result.when((token) async {
-      if (medusaApiVersion == MedusaApiVersion.v1) {
-        await flutterSecureStorage.write(key: AppConstants.cookieKey, value: token);
-        await authPreferenceService.updateAuthPreference(
-            authPreferenceService.authPreference.copyWith(authType: AuthenticationType.cookie));
-      } else {
+      if (token.isNotEmpty) {
         await flutterSecureStorage.write(key: AppConstants.jwtKey, value: token);
+      }
+      if (medusaApiVersion != MedusaApiVersion.v1) {
         final sessionUser = await authenticationUseCase.postSession(token);
         sessionUser.when((user) => log('Session user : ${user.actorId}'),
             (error) => log('Session error : ${error.message}'));
@@ -132,6 +142,7 @@ class AuthenticationBloc extends Bloc<AuthenticationEvent, AuthenticationState> 
 
       final user = await authenticationUseCase.getCurrentUser();
       user.when((user) {
+        AppScopeService.updateAllowedScopesFromUser(user);
         authPreferenceService.setIsAuthenticated(true);
         authPreferenceService.setEmail(event.email);
         emit(_LoggedIn(user));
@@ -148,6 +159,7 @@ class AuthenticationBloc extends Bloc<AuthenticationEvent, AuthenticationState> 
     emit(const _Loading());
     final result = await authenticationUseCase.getCurrentUser();
     result.when((user) {
+      AppScopeService.updateAllowedScopesFromUser(user);
       authPreferenceService.setIsAuthenticated(true);
       emit(_LoggedIn(user));
     }, (e) => emit(_Error(e)));
@@ -164,6 +176,7 @@ class AuthenticationBloc extends Bloc<AuthenticationEvent, AuthenticationState> 
       await flutterSecureStorage.write(key: AppConstants.supabaseTokenKey, value: token);
       final userResult = await authenticationUseCase.getCurrentUser();
       userResult.when((user) {
+        AppScopeService.updateAllowedScopesFromUser(user);
         authPreferenceService.setIsAuthenticated(true);
         authPreferenceService.setEmail(event.email);
         emit(_LoggedIn(user));

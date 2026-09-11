@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
@@ -42,7 +43,7 @@ class BottomNavigationBarButton extends StatelessWidget {
     //   blurRadius: 7,
     //   offset: const Offset(0, 0),
     // );
-    if (Platform.isIOS) {
+    if ((defaultTargetPlatform == TargetPlatform.iOS)) {
       return Column(
         mainAxisSize: MainAxisSize.min,
         children: [

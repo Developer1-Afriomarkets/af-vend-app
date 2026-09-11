@@ -1,4 +1,5 @@
 import 'package:medusa_admin/src/core/routing/app_router.dart';
+import 'package:flutter/foundation.dart';
 import 'dart:io';
 
 import 'package:auto_route/auto_route.dart';
@@ -72,6 +73,10 @@ class _PersonalInformationViewState extends State<PersonalInformationView> {
         builder: (context, state) {
           return Scaffold(
             appBar: AppBar(
+              leading: IconButton(
+                icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
+                onPressed: () => context.maybePop(),
+              ),
               title: const Text('Personal Information'),
             ),
             floatingActionButton: state.whenOrNull(
@@ -263,7 +268,7 @@ class _PersonalInformationViewState extends State<PersonalInformationView> {
       );
     }
 
-    if (Platform.isIOS) {
+    if ((defaultTargetPlatform == TargetPlatform.iOS)) {
       await showCupertinoModalBottomSheet(
           context: context, builder: widgetBuilder);
     } else {

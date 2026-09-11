@@ -95,8 +95,12 @@ class _RegionsViewState extends State<RegionsView> {
         ),
         body: NestedScrollView(
           headerSliverBuilder: (context, innerBoxIsScrolled) => [
-            const MedusaSliverAppBar(
-              title: Text('Regions'),
+            MedusaSliverAppBar(
+              title: const Text('Regions'),
+              leading: IconButton(
+                icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
+                onPressed: () => context.maybePop(),
+              ),
             ),
           ],
           body: SmartRefresher(

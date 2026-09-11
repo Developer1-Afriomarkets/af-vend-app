@@ -234,7 +234,7 @@ class _RenameFileViewState extends State<RenameFileView> {
   void initState() {
     fileExtension = widget.file.path.split('.').last;
     textCtrl.text = widget.file.path
-        .split(Platform.pathSeparator)
+        .split(RegExp(r'[\\/]'))
         .last
         .replaceAll('.$fileExtension', '');
     Future.delayed(const Duration(milliseconds: 200)).then((value) {
@@ -255,7 +255,7 @@ class _RenameFileViewState extends State<RenameFileView> {
     final smallTextStyle = context.bodySmall;
     Future<void> renameFile() async {
       var path = widget.file.path;
-      var lastSeparator = path.lastIndexOf(Platform.pathSeparator);
+      var lastSeparator = path.lastIndexOf(RegExp(r'[\\/]'));
       final newName = textCtrl.text.replaceAll('/', '');
       var newPath =
           '${path.substring(0, lastSeparator + 1)}$newName.$fileExtension';

@@ -1,3 +1,4 @@
+import 'package:medusa_admin/src/core/services/app_scope_service.dart';
 import 'dart:async';
 import 'package:auto_route/auto_route.dart';
 import 'package:flex_color_scheme/flex_color_scheme.dart';
@@ -74,6 +75,7 @@ class _SignInViewState extends State<SignInView> {
     return BlocConsumer<AuthenticationBloc, AuthenticationState>(
       listener: (context, state) {
         state.whenOrNull(loggedIn: (user) async {
+          AppScopeService.updateAllowedScopesFromUser(user);
           if (!isSessionExpired) {
             if (context.mounted) {
               context.router.replaceAll([const MainAppRoute()]);

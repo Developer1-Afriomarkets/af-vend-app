@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:auto_route/auto_route.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:gap/gap.dart';
 import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -9,7 +10,9 @@ import 'package:medusa_admin/src/core/constants/colors.dart';
 import 'package:medusa_admin/src/core/extensions/context_extension.dart';
 import 'package:medusa_admin/src/core/extensions/text_style_extension.dart';
 import 'package:medusa_admin/src/core/routing/app_router.dart';
-import 'package:medusa_admin/src/features/dashboard/presentation/widgets/drawer_widget.dart';
+import 'package:medusa_admin/src/core/services/app_scope_service.dart';
+import 'package:medusa_admin/src/features/auth/presentation/bloc/authentication/authentication_bloc.dart';
+import 'package:medusa_admin/src/features/dashboard/presentation/widgets/scope_switcher_sheet.dart';
 
 @RoutePage()
 class DeliveriesView extends StatefulWidget {
@@ -27,11 +30,27 @@ class _DeliveriesViewState extends State<DeliveriesView> {
   bool isLoading = true;
   String searchQuery = '';
   String selectedStatus = 'All';
+  bool filterByMyStore = true;
+  bool filterMyOrgOnly = true;
+  bool filterAssignedToMe = true;
 
   @override
   void initState() {
     super.initState();
+    filterByMyStore = (AppScopeService.activeScope == AppScope.vendor);
     _fetchDeliveries();
+  }
+
+  String? get _currentUserId {
+    try {
+      final authState = context.read<AuthenticationBloc>().state;
+      return authState.maybeMap(
+        loggedIn: (s) => s.user.id,
+        orElse: () => null,
+      );
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<void> _fetchDeliveries() async {
@@ -40,16 +59,31 @@ class _DeliveriesViewState extends State<DeliveriesView> {
       final results = await Future.wait([
         supabase.from('deliveries').select('*').order('created_at', ascending: false),
         supabase.from('region').select('id, name'),
+        supabase.from('collection_stations').select('id, name, address'),
+        supabase.from('logistics_orgs').select('id, name'),
       ]);
 
       final rawDeliveries = List<Map<String, dynamic>>.from(results[0]);
       final rawRegions = List<Map<String, dynamic>>.from(results[1]);
+      final rawStations = List<Map<String, dynamic>>.from(results[2]);
+      final rawOrgs = List<Map<String, dynamic>>.from(results[3]);
 
       final regionMap = {for (var r in rawRegions) r['id']?.toString(): r['name']?.toString()};
+      final stationMap = {for (var s in rawStations) s['id']?.toString(): s['name']?.toString()};
+      final orgMap = {for (var o in rawOrgs) o['id']?.toString(): o['name']?.toString()};
 
       for (var del in rawDeliveries) {
         final regId = del['region_id']?.toString();
         del['resolved_region_name'] = regionMap[regId] ?? 'N/A';
+
+        final origId = del['origin_collection_station_id']?.toString();
+        del['resolved_origin_station'] = stationMap[origId];
+
+        final destId = del['dest_collection_station_id']?.toString();
+        del['resolved_dest_station'] = stationMap[destId];
+
+        final orgId = del['logistics_org_id']?.toString();
+        del['resolved_org_name'] = orgMap[orgId];
       }
 
       if (mounted) {
@@ -70,25 +104,88 @@ class _DeliveriesViewState extends State<DeliveriesView> {
   }
 
   void _applyFilters() {
+    final activeScope = AppScopeService.activeScope;
+    final myId = _currentUserId;
+
     setState(() {
       filteredDeliveries = deliveries.where((del) {
-        final matchesStatus = selectedStatus == 'All' ||
-            (del['status']?.toString().toLowerCase() == selectedStatus.toLowerCase());
+        final status = del['status']?.toString().toLowerCase() ?? '';
+        bool matchesStatus = selectedStatus == 'All';
+        if (!matchesStatus) {
+          if (selectedStatus == 'Pending') {
+            matchesStatus = (status == 'pending' || status == 'created');
+          } else if (selectedStatus == 'Ongoing') {
+            matchesStatus = (status == 'ongoing' || status == 'processing' || status == 'in_transit');
+          } else if (selectedStatus == 'Completed') {
+            matchesStatus = (status == 'completed' || status == 'delivered');
+          } else {
+            matchesStatus = (status == selectedStatus.toLowerCase());
+          }
+        }
+
+        // Scope-based multitenancy filtering
+        if (activeScope == AppScope.vendor) {
+          if (filterByMyStore && myId != null) {
+            final vendorId = del['vendor_id']?.toString();
+            if (vendorId != null && vendorId != myId) {
+              return false;
+            }
+          }
+        } else if (activeScope == AppScope.logistics) {
+          if (filterMyOrgOnly) {
+            final orgId = AppScopeService.currentLogisticsOrgId;
+            final delOrgId = del['logistics_org_id']?.toString();
+            if (orgId != null && orgId.isNotEmpty && delOrgId != null && delOrgId.isNotEmpty) {
+              if (delOrgId != orgId) {
+                return false;
+              }
+            }
+          }
+        } else if (activeScope == AppScope.rider) {
+          if (filterAssignedToMe && myId != null) {
+            final driverId = del['driver']?.toString();
+            final driverName = del['driver_name']?.toString().toLowerCase() ?? '';
+            final myName = AppScopeService.displayName.toLowerCase();
+            final isAssignedToMe = (driverId == myId) ||
+                (myName.isNotEmpty && driverName.isNotEmpty && (driverName == myName || driverName.contains(myName) || myName.contains(driverName)));
+            if (driverId != null && driverId.isNotEmpty && !isAssignedToMe) {
+              return false;
+            }
+          }
+        }
 
         final driverName = del['driver_name']?.toString().toLowerCase() ?? '';
         final vehicleInfo = del['vehicle_info']?.toString().toLowerCase() ?? '';
         final regionName = (del['resolved_region_name'] ?? '')?.toString().toLowerCase() ?? '';
-        final status = del['status']?.toString().toLowerCase() ?? '';
+        final orgName = (del['resolved_org_name'] ?? '')?.toString().toLowerCase() ?? '';
 
         final matchesSearch = searchQuery.isEmpty ||
             driverName.contains(searchQuery.toLowerCase()) ||
             vehicleInfo.contains(searchQuery.toLowerCase()) ||
             regionName.contains(searchQuery.toLowerCase()) ||
+            orgName.contains(searchQuery.toLowerCase()) ||
             status.contains(searchQuery.toLowerCase());
 
         return matchesStatus && matchesSearch;
       }).toList();
     });
+  }
+
+  IconData _getVehicleIcon(String? vehicleType) {
+    switch (vehicleType?.toLowerCase()) {
+      case 'bike':
+      case 'motorcycle':
+        return Icons.two_wheeler;
+      case 'car':
+      case 'sedan':
+        return Icons.directions_car;
+      case 'truck':
+      case 'heavy truck':
+        return Icons.local_shipping;
+      case 'van':
+      default:
+        return Icons.airport_shuttle;
+    }
   }
 
   @override
@@ -102,6 +199,7 @@ class _DeliveriesViewState extends State<DeliveriesView> {
       appBar: AppBar(
         title: const Text('Deliveries'),
         actions: [
+          const ScopeBadge(),
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: _fetchDeliveries,
@@ -126,51 +224,101 @@ class _DeliveriesViewState extends State<DeliveriesView> {
 
   Widget _buildContent(BuildContext context) {
     final smallTextStyle = context.bodySmall;
-    final mediumTextStyle = context.bodyMedium;
     final manatee = ColorManager.manatee;
+    final activeScope = AppScopeService.activeScope;
 
     return Column(
       children: [
-        // Search and Status Filters
+        // Scope & Filter bar
         Padding(
           padding: const EdgeInsets.all(12.0),
           child: Column(
             children: [
               CupertinoSearchTextField(
                 style: TextStyle(color: context.theme.textTheme.bodyLarge?.color),
-                placeholder: 'Search by driver, vehicle, region...',
+                placeholder: 'Search driver, vehicle, partner, region...',
                 onChanged: (val) {
                   searchQuery = val;
                   _applyFilters();
                 },
               ),
               const Gap(8),
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: ['All', 'Pending', 'Ongoing', 'Completed'].map((status) {
-                    final isSelected = selectedStatus == status;
-                    return Padding(
-                      padding: const EdgeInsets.only(right: 8.0),
-                      child: ChoiceChip(
-                        label: Text(status),
-                        selected: isSelected,
-                        onSelected: (selected) {
-                          if (selected) {
-                            setState(() {
-                              selectedStatus = status;
-                              _applyFilters();
-                            });
-                          }
-                        },
+              Row(
+                children: [
+                  Expanded(
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: [
+                          if (activeScope == AppScope.vendor) ...[
+                            ChoiceChip(
+                              label: const Text('My Store'),
+                              selected: filterByMyStore,
+                              onSelected: (selected) {
+                                setState(() {
+                                  filterByMyStore = selected;
+                                  _applyFilters();
+                                });
+                              },
+                              avatar: const Icon(Icons.storefront, size: 14),
+                            ),
+                            const Gap(6),
+                          ] else if (activeScope == AppScope.logistics) ...[
+                            ChoiceChip(
+                              label: const Text('My Org Fleet'),
+                              selected: filterMyOrgOnly,
+                              onSelected: (selected) {
+                                setState(() {
+                                  filterMyOrgOnly = selected;
+                                  _applyFilters();
+                                });
+                              },
+                              avatar: const Icon(Icons.business, size: 14),
+                            ),
+                            const Gap(6),
+                          ] else if (activeScope == AppScope.rider) ...[
+                            ChoiceChip(
+                              label: const Text('Assigned to Me'),
+                              selected: filterAssignedToMe,
+                              onSelected: (selected) {
+                                setState(() {
+                                  filterAssignedToMe = selected;
+                                  _applyFilters();
+                                });
+                              },
+                              avatar: const Icon(Icons.person_pin, size: 14),
+                            ),
+                            const Gap(6),
+                          ],
+                          ...['All', 'Pending', 'Ongoing', 'Completed'].map((status) {
+                            final isSelected = selectedStatus == status;
+                            return Padding(
+                              padding: const EdgeInsets.only(right: 6.0),
+                              child: ChoiceChip(
+                                label: Text(status),
+                                selected: isSelected,
+                                onSelected: (selected) {
+                                  if (selected) {
+                                    setState(() {
+                                      selectedStatus = status;
+                                      _applyFilters();
+                                    });
+                                  }
+                                },
+                              ),
+                            );
+                          }),
+                        ],
                       ),
-                    );
-                  }).toList(),
-                ),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
         ),
+
+        // Deliveries List
         Expanded(
           child: isLoading
               ? const Center(child: CircularProgressIndicator.adaptive())
@@ -182,6 +330,13 @@ class _DeliveriesViewState extends State<DeliveriesView> {
                           const Icon(Icons.local_shipping_outlined, size: 64, color: Colors.grey),
                           const Gap(16),
                           Text('No deliveries found', style: context.bodyLarge),
+                          const Gap(8),
+                          Text(
+                            selectedStatus != 'All'
+                                ? 'Try changing the status filter'
+                                : 'Tap the + button to dispatch a delivery run',
+                            style: smallTextStyle?.copyWith(color: manatee),
+                          ),
                         ],
                       ),
                     )
@@ -191,20 +346,38 @@ class _DeliveriesViewState extends State<DeliveriesView> {
                       separatorBuilder: (context, index) => const Gap(10),
                       itemBuilder: (context, index) {
                         final delivery = filteredDeliveries[index];
-                        final status = delivery['status']?.toString().toUpperCase() ?? 'PENDING';
-                        final driverName = delivery['driver_name']?.toString() ?? 'No Driver assigned';
+                        final rawStatus = delivery['status']?.toString().toUpperCase() ?? 'PENDING';
+                        final status = (rawStatus == 'PROCESSING' || rawStatus == 'ONGOING')
+                            ? 'IN TRANSIT'
+                            : (rawStatus == 'CREATED')
+                                ? 'PENDING'
+                                : rawStatus;
+                        final driverName = delivery['driver_name']?.toString() ?? 'Unassigned';
+                        final driverPhone = delivery['driver_phone']?.toString();
                         final regionName = delivery['resolved_region_name']?.toString() ?? 'N/A';
-                        final deliveryMode = delivery['delivery_mode']?.toString() ?? 'N/A';
-                        final routeCategory = delivery['route_category']?.toString().toUpperCase() ?? 'URBAN';
+                        final deliveryMode = delivery['delivery_mode']?.toString() ?? 'Standard';
+                        final routeCategory = delivery['route_category']?.toString().replaceAll('_', ' ').toUpperCase() ?? 'INTRA STATE';
+                        final vehicleType = delivery['vehicle_type']?.toString() ?? 'Van';
+                        final partnerName = delivery['resolved_org_name']?.toString();
+                        final originStation = delivery['resolved_origin_station']?.toString();
+                        final destStation = delivery['resolved_dest_station']?.toString();
+
                         final rawOrderIds = delivery['order_ids'];
                         int orderCount = 0;
                         if (rawOrderIds is List) {
                           orderCount = rawOrderIds.length;
                         } else if (rawOrderIds is String) {
-                          try {
-                            final decoded = jsonDecode(rawOrderIds);
-                            if (decoded is List) orderCount = decoded.length;
-                          } catch (_) {}
+                          if (rawOrderIds.startsWith('{') && rawOrderIds.endsWith('}')) {
+                            orderCount = rawOrderIds.substring(1, rawOrderIds.length - 1).split(',').where((s) => s.trim().isNotEmpty).length;
+                          } else {
+                            try {
+                              final decoded = jsonDecode(rawOrderIds);
+                              if (decoded is List) orderCount = decoded.length;
+                            } catch (_) {}
+                            if (orderCount == 0 && rawOrderIds.trim().isNotEmpty) {
+                              orderCount = 1;
+                            }
+                          }
                         }
 
                         DateTime? createdAt;
@@ -218,15 +391,15 @@ class _DeliveriesViewState extends State<DeliveriesView> {
                         // Determine status badge colors
                         Color statusColor;
                         Color statusBgColor;
-                        if (status == 'COMPLETED') {
-                          statusColor = Colors.green;
-                          statusBgColor = Colors.green.withValues(alpha: 0.12);
-                        } else if (status == 'ONGOING') {
-                          statusColor = Colors.blue;
+                        if (status == 'COMPLETED' || status == 'DELIVERED') {
+                          statusColor = const Color(0xFF1B3A0A);
+                          statusBgColor = const Color(0xFF1B3A0A).withValues(alpha: 0.12);
+                        } else if (status == 'ONGOING' || status == 'PROCESSING' || status == 'IN TRANSIT') {
+                          statusColor = Colors.blue.shade700;
                           statusBgColor = Colors.blue.withValues(alpha: 0.12);
                         } else {
-                          statusColor = Colors.orange;
-                          statusBgColor = Colors.orange.withValues(alpha: 0.12);
+                          statusColor = const Color(0xFFE48629);
+                          statusBgColor = const Color(0xFFE48629).withValues(alpha: 0.12);
                         }
 
                         return Card(
@@ -254,23 +427,44 @@ class _DeliveriesViewState extends State<DeliveriesView> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
+                                  // Header: Status, Route category, Date
                                   Row(
                                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                     children: [
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                        decoration: BoxDecoration(
-                                          color: statusBgColor,
-                                          borderRadius: BorderRadius.circular(8.0),
-                                        ),
-                                        child: Text(
-                                          status,
-                                          style: TextStyle(
-                                            color: statusColor,
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 12.0,
+                                      Row(
+                                        children: [
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                            decoration: BoxDecoration(
+                                              color: statusBgColor,
+                                              borderRadius: BorderRadius.circular(8.0),
+                                            ),
+                                            child: Text(
+                                              status,
+                                              style: TextStyle(
+                                                color: statusColor,
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 12.0,
+                                              ),
+                                            ),
                                           ),
-                                        ),
+                                          const Gap(8),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                            decoration: BoxDecoration(
+                                              color: Colors.grey.withValues(alpha: 0.1),
+                                              borderRadius: BorderRadius.circular(6.0),
+                                            ),
+                                            child: Text(
+                                              routeCategory,
+                                              style: TextStyle(
+                                                fontSize: 10.0,
+                                                fontWeight: FontWeight.w600,
+                                                color: manatee,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
                                       ),
                                       Text(
                                         dateString,
@@ -279,39 +473,92 @@ class _DeliveriesViewState extends State<DeliveriesView> {
                                     ],
                                   ),
                                   const Gap(12),
+
+                                  // Driver & Vehicle
                                   Row(
                                     children: [
-                                      const Icon(Icons.person, size: 16, color: Colors.grey),
-                                      const SizedBox(width: 6),
-                                      Text(
-                                        driverName,
-                                        style: context.bodyLarge?.copyWith(fontWeight: FontWeight.bold),
+                                      CircleAvatar(
+                                        radius: 18,
+                                        backgroundColor: const Color(0xFFE48629).withValues(alpha: 0.15),
+                                        child: Icon(_getVehicleIcon(vehicleType), size: 18, color: const Color(0xFFE48629)),
+                                      ),
+                                      const Gap(10),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              driverName,
+                                              style: context.bodyLarge?.copyWith(fontWeight: FontWeight.bold),
+                                            ),
+                                            if (driverPhone != null && driverPhone.isNotEmpty)
+                                              Text(
+                                                driverPhone,
+                                                style: smallTextStyle?.copyWith(color: manatee),
+                                              ),
+                                          ],
+                                        ),
+                                      ),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFF1B3A0A).withValues(alpha: 0.08),
+                                          borderRadius: BorderRadius.circular(8),
+                                        ),
+                                        child: Text(
+                                          '$orderCount Order${orderCount == 1 ? '' : 's'}',
+                                          style: smallTextStyle?.copyWith(
+                                            color: const Color(0xFF1B3A0A),
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
                                       ),
                                     ],
                                   ),
-                                  const Gap(8),
-                                  Row(
-                                    children: [
-                                      const Icon(CupertinoIcons.location, size: 14, color: Colors.grey),
-                                      const SizedBox(width: 4),
-                                      Text(regionName, style: mediumTextStyle?.copyWith(color: manatee)),
-                                      const Spacer(),
-                                      const Icon(CupertinoIcons.shopping_cart, size: 14, color: Colors.grey),
-                                      const SizedBox(width: 4),
-                                      Text('$orderCount Order(s)', style: mediumTextStyle?.copyWith(fontWeight: FontWeight.w600)),
-                                    ],
-                                  ),
-                                  const Divider(height: 24, thickness: 0.8),
+
+                                  // Stations route if present
+                                  if (originStation != null || destStation != null) ...[
+                                    const Gap(10),
+                                    Container(
+                                      padding: const EdgeInsets.all(8),
+                                      decoration: BoxDecoration(
+                                        color: Colors.grey.withValues(alpha: 0.06),
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          const Icon(Icons.place_outlined, size: 14, color: Colors.grey),
+                                          const Gap(4),
+                                          Expanded(
+                                            child: Text(
+                                              '${originStation ?? 'Hub'} ➔ ${destStation ?? 'Destination'}',
+                                              style: smallTextStyle?.copyWith(fontWeight: FontWeight.w500),
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+
+                                  const Divider(height: 20, thickness: 0.8),
+
+                                  // Footer
                                   Row(
                                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                     children: [
-                                      Text(
-                                        'Mode: $deliveryMode  •  Route: $routeCategory',
-                                        style: smallTextStyle?.copyWith(color: manatee),
+                                      Expanded(
+                                        child: Text(
+                                          partnerName != null
+                                              ? '$partnerName • $regionName'
+                                              : '$deliveryMode • $regionName',
+                                          style: smallTextStyle?.copyWith(color: manatee),
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
                                       ),
                                       Icon(
                                         Icons.arrow_forward_ios,
-                                        size: 14,
+                                        size: 13,
                                         color: manatee.withValues(alpha: 0.5),
                                       ),
                                     ],

@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
@@ -32,7 +33,7 @@ class SearchChip extends StatelessWidget {
         chipColor = Colors.teal;
       case SearchCategory.products:
         title = 'Products';
-        iconDate = Platform.isIOS ? MedusaIcons.tag : CupertinoIcons.tag;
+        iconDate = (defaultTargetPlatform == TargetPlatform.iOS) ? MedusaIcons.tag : CupertinoIcons.tag;
         chipColor = Colors.amber;
 
       case SearchCategory.collections:
@@ -42,7 +43,7 @@ class SearchChip extends StatelessWidget {
 
       case SearchCategory.customers:
         title = 'Customers';
-        iconDate = Platform.isIOS ? MedusaIcons.users : Icons.person;
+        iconDate = (defaultTargetPlatform == TargetPlatform.iOS) ? MedusaIcons.users : Icons.person;
         chipColor = Colors.brown;
 
       case SearchCategory.groups:

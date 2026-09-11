@@ -168,6 +168,8 @@ class _OrderDetailsViewState extends State<OrderDetailsView> {
                       children: [
                         OrderOverview(order: order),
                         space,
+                        OrderLogisticsActions(order: order),
+                        space,
                         OrderSummery(
                           order,
                           onExpansionChanged: (expanded) async {
@@ -232,10 +234,8 @@ class _OrderDetailsViewState extends State<OrderDetailsView> {
                   ),
                 ),
                 error: (e) =>
-                    OrderDetailsErrorPage(e.toString(), onRetryTap: () async {
-                  // await controller.fetchOrderDetails();
-                  // controller.timeLineFuture =
-                  //     controller.fetchTimeLine();
+                    OrderDetailsErrorPage(e.toString(), onRetryTap: () {
+                  loadOrder();
                 }),
                 loading: () => const OrderDetailsLoadingPage(),
                 orElse: () => const SizedBox.shrink(),

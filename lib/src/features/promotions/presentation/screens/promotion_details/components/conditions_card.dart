@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:gap/gap.dart';
@@ -60,7 +61,7 @@ class ConditionsCard extends StatelessWidget {
                     //       )));
                     // }
                   },
-                  icon: Platform.isIOS
+                  icon: (defaultTargetPlatform == TargetPlatform.iOS)
                       ? const Icon(CupertinoIcons.add)
                       : const Icon(Icons.add)),
             ],

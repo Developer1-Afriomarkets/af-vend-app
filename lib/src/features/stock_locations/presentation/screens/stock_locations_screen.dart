@@ -104,6 +104,10 @@ class _StockLocationsScreenState extends State<StockLocationsScreen> {
       ],
       child: Scaffold(
         appBar: AppBar(
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
+            onPressed: () => context.maybePop(),
+          ),
           title: const Text('Stock Locations'),
         ),
         floatingActionButton: FloatingActionButton(

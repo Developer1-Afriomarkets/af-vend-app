@@ -85,9 +85,11 @@ class AuthPreferenceService {
     try {
       switch (_authPreference.authType) {
         case AuthenticationType.cookie:
-          return await _securePrefs.containsKey(key: AppConstants.cookieKey);
-        case AuthenticationType.jwt:
+          if (await _securePrefs.containsKey(key: AppConstants.cookieKey)) return true;
           return await _securePrefs.containsKey(key: AppConstants.jwtKey);
+        case AuthenticationType.jwt:
+          if (await _securePrefs.containsKey(key: AppConstants.jwtKey)) return true;
+          return await _securePrefs.containsKey(key: AppConstants.cookieKey);
         case AuthenticationType.token:
           return await _securePrefs.containsKey(key: AppConstants.tokenKey);
         case AuthenticationType.supabase:

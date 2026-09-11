@@ -1,3 +1,4 @@
+import 'package:medusa_admin/src/core/services/app_scope_service.dart';
 import 'package:adaptive_dialog/adaptive_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:gap/gap.dart';
@@ -23,7 +24,9 @@ class TeamCard extends StatelessWidget {
     final largeTextStyle = context.bodyLarge;
     final email = user.email ?? '';
     final name = user.fullName;
-    final firstLetter = user.fullName[0];
+    final initial = name.trim().isNotEmpty
+        ? name.trim()[0].toUpperCase()
+        : (email.isNotEmpty ? email[0].toUpperCase() : '?');
     return Container(
       decoration: BoxDecoration(
           color: Theme.of(context).cardColor,
@@ -37,20 +40,23 @@ class TeamCard extends StatelessWidget {
           Flexible(
             child: Row(
               children: [
-                if (firstLetter != null || email.isNotEmpty)
-                  CircleAvatar(
-                    backgroundColor: ColorManager.getAvatarColor(email),
-                    child: Text(firstLetter ?? email[0].toUpperCase(),
-                        style: largeTextStyle?.copyWith(color: Colors.white)),
-                  ),
-                if (firstLetter != null || email.isNotEmpty)
-                  const SizedBox(width: 6.0),
+                CircleAvatar(
+                  backgroundColor: ColorManager.getAvatarColor(email),
+                  child: Text(initial,
+                      style: largeTextStyle?.copyWith(color: Colors.white)),
+                ),
+                const SizedBox(width: 6.0),
                 Flexible(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(name, style: largeTextStyle),
-                      const SizedBox(height: 6.0),
+                      Row(
+                        children: [
+                          Expanded(child: Text(name, style: largeTextStyle)),
+                          _buildRoleBadge(context),
+                        ],
+                      ),
+                      const SizedBox(height: 4.0),
                       Text(email, style: mediumTextStyle),
                     ],
                   ),
@@ -85,6 +91,28 @@ class TeamCard extends StatelessWidget {
               },
               icon: const Icon(Icons.more_horiz_rounded))
         ],
+      ),
+    );
+  }
+
+  Widget _buildRoleBadge(BuildContext context) {
+    final isLogistics = AppScopeService.isLogistics;
+    final isCurrent = user.email == AuthPreferenceService.email;
+    final label = isCurrent
+        ? (isLogistics ? 'Fleet Admin' : 'Admin')
+        : (isLogistics ? 'Dispatcher' : 'Staff');
+    final color = isLogistics ? const Color(0xFF059669) : const Color(0xFFE48629);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: color.withValues(alpha: 0.3), width: 0.8),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: color),
       ),
     );
   }

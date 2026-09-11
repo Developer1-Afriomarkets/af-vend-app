@@ -28,10 +28,16 @@ abstract class MedusaAdminDi {
       final authType = AuthPreferenceService.authTypeGetter;
       final secureStorage = getIt<FlutterSecureStorage>();
       try {
+        // Universal Bearer JWT injection: If a JWT is present, attach Bearer header
+        final String? jwt = await secureStorage.read(key: AppConstants.jwtKey);
+        if (jwt != null && jwt.isNotEmpty && options.headers['Authorization'] == null) {
+          options.headers['Authorization'] = 'Bearer $jwt';
+        }
+
         switch (authType) {
           case AuthenticationType.cookie:
             final String? token = await secureStorage.read(key: AppConstants.tokenKey);
-            if (token != null && token.isNotEmpty) {
+            if (token != null && token.isNotEmpty && options.headers['x-medusa-access-token'] == null) {
               options.headers['x-medusa-access-token'] = token;
             }
 
@@ -47,10 +53,9 @@ abstract class MedusaAdminDi {
             }
             break;
 
-
           case AuthenticationType.token:
             final token = await secureStorage.read(key: AppConstants.tokenKey);
-            if (token != null) {
+            if (token != null && options.headers['x-medusa-access-token'] == null) {
               options.headers['x-medusa-access-token'] = token;
             }
             break;
@@ -59,28 +64,16 @@ abstract class MedusaAdminDi {
             if (token != null) {
               options.headers['sb-access-token'] = token;
             }
-            // Bridge for medusa_js_dart: Rename standard Authorization or x-medusa-access-token 
-            // to sb-access-token when in Supabase mode.
-            if (options.headers.containsKey('Authorization')) {
-              final auth = options.headers['Authorization'].toString();
-              if (auth.startsWith('Bearer ')) {
-                options.headers['sb-access-token'] = auth.replaceFirst('Bearer ', '');
-                options.headers.remove('Authorization');
-              }
-            }
-            if (options.headers.containsKey('x-medusa-access-token')) {
-              options.headers['sb-access-token'] = options.headers.remove('x-medusa-access-token');
+            // Retain Authorization header for Medusa V1 and custom admin endpoints
+            if (jwt?.isNotEmpty ?? false) {
+              options.headers['Authorization'] = 'Bearer $jwt';
             }
             break;
-
-
 
           case AuthenticationType.jwt:
             if (options.headers['Authorization'] != null) {
               break;
             }
-            final String? jwt =
-            await secureStorage.read(key: AppConstants.jwtKey);
             if (jwt?.isNotEmpty ?? false) {
               options.headers['Authorization'] = 'Bearer $jwt';
             }
@@ -90,7 +83,8 @@ abstract class MedusaAdminDi {
       handler.next(options);
     },
     onError: (DioException e, handler) async {
-      if (e.response?.statusCode == 401 && !e.requestOptions.path.contains('/auth')) {
+      // Do not aggressively log out on sub-endpoint 401s; only let user retry or auth check handle it
+      if (e.response?.statusCode == 401 && e.requestOptions.path.endsWith('/auth')) {
         try {
           AuthenticationBloc.instance.add(const AuthenticationEvent.logOut());
         } catch (_) {}

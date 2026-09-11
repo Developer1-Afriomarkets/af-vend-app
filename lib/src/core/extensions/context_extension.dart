@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 
 import 'package:auto_route/auto_route.dart';
 import 'package:flex_color_scheme/flex_color_scheme.dart';
@@ -101,7 +102,7 @@ extension DateTimePickerExtension on BuildContext {
     DateTime? selectedDate;
     final useAndroidPicker = forceAndroidPicker ??
         PreferenceService.appSettingsGetter.useAndroidPicker;
-    if (Platform.isIOS && !useAndroidPicker) {
+    if ((defaultTargetPlatform == TargetPlatform.iOS) && !useAndroidPicker) {
       return await showCupertinoModalBottomSheet(
           context: this,
           builder: (context) {

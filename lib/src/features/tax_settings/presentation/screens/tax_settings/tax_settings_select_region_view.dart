@@ -93,6 +93,10 @@ class _TaxSettingsSelectRegionViewState
           headerSliverBuilder: (context, innerBoxIsScrolled) => [
             MedusaSliverAppBar(
               title: const Text('Regions'),
+              leading: IconButton(
+                icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
+                onPressed: () => context.maybePop(),
+              ),
               bottom: PreferredSize(
                 preferredSize: const Size.fromHeight(kToolbarHeight / 2),
                 child: Container(

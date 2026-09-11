@@ -1,3 +1,7 @@
+import 'package:supabase_flutter/supabase_flutter.dart' hide MultipartFile;
+import 'package:medusa_admin/src/core/services/app_scope_service.dart';
+import 'package:medusa_admin/src/features/dashboard/presentation/widgets/scope_switcher_sheet.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:dio/dio.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:medusa_admin/src/core/extensions/snack_bar_extension.dart';
@@ -17,7 +21,6 @@ import 'package:medusa_admin/src/features/orders/presentation/bloc/orders/orders
 import 'package:medusa_admin/src/features/products/presentation/bloc/product_crud/product_crud_bloc.dart';
 import 'package:medusa_admin_dart_client/medusa_admin_dart_client_v2.dart' hide Image;
 import 'package:medusa_admin/src/core/routing/app_router.dart';
-import 'package:medusa_admin/src/features/dashboard/presentation/widgets/drawer_widget.dart';
 import 'package:medusa_admin/src/features/store_details/presentation/bloc/store/store_bloc.dart';
 import 'package:medusa_admin/src/core/di/di.dart';
 
@@ -50,6 +53,10 @@ class _DashboardOverviewViewState extends State<DashboardOverviewView> {
   late final ProductCrudBloc _productsBloc;
   Map<String, dynamic>? _walletData;
   Map<String, dynamic>? _bankAccount;
+  List<Map<String, dynamic>> _deliveries = [];
+  List<Map<String, dynamic>> _pickupRequests = [];
+  List<Map<String, dynamic>> _collectionStations = [];
+  List<Map<String, dynamic>> _logisticsOrgs = [];
 
   @override
   void initState() {
@@ -58,6 +65,7 @@ class _DashboardOverviewViewState extends State<DashboardOverviewView> {
     _ordersBloc = OrdersBloc.instance..add(const OrdersEvent.loadOrders(queryParameters: {'limit': 50}));
     _productsBloc = ProductCrudBloc.instance..add(const ProductCrudEvent.loadAll(queryParameters: {'limit': 50}));
     _loadWalletData();
+    _loadLogisticsData();
   }
 
   void _onScroll() {
@@ -91,6 +99,45 @@ class _DashboardOverviewViewState extends State<DashboardOverviewView> {
     } catch (_) {}
   }
 
+  Future<void> _loadLogisticsData() async {
+    try {
+      final supabase = Supabase.instance.client;
+      final orgId = AppScopeService.currentLogisticsOrgId;
+      final results = await Future.wait([
+        orgId != null && orgId.isNotEmpty
+            ? supabase.from('deliveries').select('*').eq('logistics_org_id', orgId).order('created_at', ascending: false).limit(20)
+            : supabase.from('deliveries').select('*').order('created_at', ascending: false).limit(20),
+        orgId != null && orgId.isNotEmpty
+            ? supabase.from('pickup_requests').select('*').eq('logistics_org_id', orgId).order('created_at', ascending: false).limit(20)
+            : supabase.from('pickup_requests').select('*').order('created_at', ascending: false).limit(20),
+        supabase.from('collection_stations').select('*').limit(10),
+        supabase.from('logistics_orgs').select('*').limit(10),
+      ]);
+      if (mounted) {
+        setState(() {
+          _deliveries = List<Map<String, dynamic>>.from(results[0]);
+          _pickupRequests = List<Map<String, dynamic>>.from(results[1]);
+          _collectionStations = List<Map<String, dynamic>>.from(results[2]);
+          _logisticsOrgs = List<Map<String, dynamic>>.from(results[3]);
+        });
+      }
+    } catch (_) {}
+  }
+
+  String _getRealWalletBalance(String currency) {
+    if (_walletData == null) return '${_formatCurrency(currency)}0.00';
+    final balances = _walletData?['balances'];
+    if (balances is Map && balances[currency.toUpperCase()] != null) {
+      final val = balances[currency.toUpperCase()];
+      return '${_formatCurrency(currency)}${(val is num ? val : 0).toStringAsFixed(2)}';
+    }
+    final total = _walletData?['total_balance'];
+    if (total is num) {
+      return '${_formatCurrency(currency)}${total.toStringAsFixed(2)}';
+    }
+    return '${_formatCurrency(currency)}0.00';
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = context.isDark;
@@ -103,29 +150,62 @@ class _DashboardOverviewViewState extends State<DashboardOverviewView> {
       child: Scaffold(
         backgroundColor: context.theme.scaffoldBackgroundColor,
         drawer: null,
-        floatingActionButton: Padding(
-          padding: const EdgeInsets.only(bottom: 8.0),
-          child: FloatingActionButton.extended(
-            heroTag: 'dashboard_quick_create_fab',
-            onPressed: () => _showQuickCreateBottomSheet(context),
-            backgroundColor: const Color(0xFFE48629),
-            elevation: 5,
-            icon: const Icon(Icons.add_rounded, color: Colors.white, size: 24),
-            label: Text(
-              'Quick Actions',
-              style: GoogleFonts.comfortaa(
-                fontWeight: FontWeight.bold,
-                fontSize: 13,
-                color: Colors.white,
-                letterSpacing: 0.3,
+        floatingActionButton: ValueListenableBuilder<AppScope>(
+          valueListenable: AppScopeService.activeScopeNotifier,
+          builder: (context, activeScope, _) {
+            String label = 'Quick Actions';
+            IconData icon = Icons.add_rounded;
+            VoidCallback action = () => _showQuickCreateBottomSheet(context);
+
+            switch (activeScope) {
+              case AppScope.vendor:
+                label = 'Quick Actions';
+                icon = Icons.add_rounded;
+                action = () => _showQuickCreateBottomSheet(context);
+                break;
+              case AppScope.logistics:
+                label = 'Dispatch Hub';
+                icon = Icons.local_shipping_rounded;
+                action = () => _showLogisticsDispatchSheet(context);
+                break;
+              case AppScope.rider:
+                label = 'Verify POD';
+                icon = Icons.qr_code_scanner_rounded;
+                action = () => _showProofOfDeliverySheet(context);
+                break;
+              case AppScope.admin:
+                label = 'Admin Ops';
+                icon = Icons.tune_rounded;
+                action = () => _showAdminOpsSheet(context);
+                break;
+            }
+
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 8.0),
+              child: FloatingActionButton.extended(
+                heroTag: 'dashboard_quick_create_fab',
+                onPressed: action,
+                backgroundColor: activeScope.accentColor,
+                elevation: 5,
+                icon: Icon(icon, color: Colors.white, size: 22),
+                label: Text(
+                  label,
+                  style: GoogleFonts.comfortaa(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                    color: Colors.white,
+                    letterSpacing: 0.3,
+                  ),
+                ),
               ),
-            ),
-          ),
+            );
+          },
         ),
         body: RefreshIndicator(
           onRefresh: () async {
             await Future.wait([
               _loadWalletData(),
+              _loadLogisticsData(),
               Future.sync(() {
                 _ordersBloc.add(const OrdersEvent.loadOrders(queryParameters: {'limit': 50}));
                 _productsBloc.add(const ProductCrudEvent.loadAll(queryParameters: {'limit': 50}));
@@ -178,7 +258,65 @@ class _DashboardOverviewViewState extends State<DashboardOverviewView> {
                             }
                           }
 
-                          return Column(
+                          return ValueListenableBuilder<AppScope>(
+                            valueListenable: AppScopeService.activeScopeNotifier,
+                            builder: (context, activeScope, _) {
+                              switch (activeScope) {
+                                case AppScope.vendor:
+                                  return _buildVendorOverview(
+                                    context,
+                                    loadedOrders,
+                                    ordersCount,
+                                    productsCount,
+                                    storeCurrency,
+                                    revenue,
+                                    pendingFulfillments,
+                                    productsState,
+                                    isDark,
+                                  );
+                                case AppScope.logistics:
+                                  return _buildLogisticsOverview(context, isDark);
+                                case AppScope.rider:
+                                  return _buildRiderOverview(context, isDark);
+                                case AppScope.admin:
+                                  return _buildAdminOverview(
+                                    context,
+                                    loadedOrders,
+                                    ordersCount,
+                                    productsCount,
+                                    storeCurrency,
+                                    revenue,
+                                    isDark,
+                                  );
+                              }
+                            },
+                          );
+                        },
+                      );
+                    },
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+
+  Widget _buildVendorOverview(
+    BuildContext context,
+    List<Order> loadedOrders,
+    int ordersCount,
+    int productsCount,
+    String storeCurrency,
+    double revenue,
+    int pendingFulfillments,
+    ProductCrudState productsState,
+    bool isDark,
+  ) {
+                              return Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               // 1. Vendor Wallet & Payout Banner
@@ -221,15 +359,20 @@ class _DashboardOverviewViewState extends State<DashboardOverviewView> {
                                               Row(
                                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                                 children: [
-                                                  Text(
-                                                    'AFRIOMARKETS VENDOR WALLET',
-                                                    style: GoogleFonts.comfortaa(
-                                                      color: const Color(0xFFF8B55B),
-                                                      fontSize: 10,
-                                                      fontWeight: FontWeight.bold,
-                                                      letterSpacing: 0.8,
+                                                  Expanded(
+                                                    child: Text(
+                                                      'AFRIOMARKETS VENDOR WALLET',
+                                                      style: GoogleFonts.comfortaa(
+                                                        color: const Color(0xFFF8B55B),
+                                                        fontSize: 10,
+                                                        fontWeight: FontWeight.bold,
+                                                        letterSpacing: 0.8,
+                                                      ),
+                                                      maxLines: 1,
+                                                      overflow: TextOverflow.ellipsis,
                                                     ),
                                                   ),
+                                                  const Gap(8),
                                                   Container(
                                                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                                                     decoration: BoxDecoration(
@@ -254,7 +397,7 @@ class _DashboardOverviewViewState extends State<DashboardOverviewView> {
                                                   final primaryCurrency = totalBalanceMap.containsKey('NGN')
                                                       ? 'NGN'
                                                       : (totalBalanceMap.keys.firstOrNull ?? storeCurrency.toUpperCase());
-                                                  final primaryBalance = totalBalanceMap[primaryCurrency] ?? (revenue * 0.85);
+                                                  final primaryBalance = totalBalanceMap[primaryCurrency] ?? 0.0;
                                                   final otherCurrencies = totalBalanceMap.keys.where((c) => c != primaryCurrency).toList();
 
                                                   return Column(
@@ -310,27 +453,32 @@ class _DashboardOverviewViewState extends State<DashboardOverviewView> {
                                               Row(
                                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                                 children: [
-                                                  Column(
-                                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                                    children: [
-                                                      Text(
-                                                        'Settlement Mode',
-                                                        style: TextStyle(
-                                                          color: Colors.white.withOpacity(0.4),
-                                                          fontSize: 8.5,
+                                                  Expanded(
+                                                    child: Column(
+                                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                                      children: [
+                                                        Text(
+                                                          'Settlement Mode',
+                                                          style: TextStyle(
+                                                            color: Colors.white.withOpacity(0.4),
+                                                            fontSize: 8.5,
+                                                          ),
                                                         ),
-                                                      ),
-                                                      const Gap(2),
-                                                      Text(
-                                                        _bankAccount != null ? 'Automated & On-Demand' : 'Pending Bank Setup',
-                                                        style: TextStyle(
-                                                          color: Colors.white.withOpacity(0.85),
-                                                          fontSize: 11,
-                                                          fontWeight: FontWeight.bold,
+                                                        const Gap(2),
+                                                        Text(
+                                                          _bankAccount != null ? 'Automated & On-Demand' : 'Pending Bank Setup',
+                                                          style: TextStyle(
+                                                            color: Colors.white.withOpacity(0.85),
+                                                            fontSize: 11,
+                                                            fontWeight: FontWeight.bold,
+                                                          ),
+                                                          maxLines: 1,
+                                                          overflow: TextOverflow.ellipsis,
                                                         ),
-                                                      ),
-                                                    ],
+                                                      ],
+                                                    ),
                                                   ),
+                                                  const Gap(8),
                                                   ElevatedButton(
                                                     onPressed: () => context.pushRoute(const VendorWalletRoute()),
                                                     style: ElevatedButton.styleFrom(
@@ -499,17 +647,6 @@ class _DashboardOverviewViewState extends State<DashboardOverviewView> {
                               _buildStockAlertsSection(productsState, isDark),
                             ],
                           );
-                        },
-                      );
-                    },
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
   }
 
   Widget _buildQuickActionBtn({
@@ -601,14 +738,19 @@ class _DashboardOverviewViewState extends State<DashboardOverviewView> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                title,
-                style: GoogleFonts.comfortaa(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: isDark ? const Color(0xFF8A7D60) : Colors.grey.shade600,
+              Expanded(
+                child: Text(
+                  title,
+                  style: GoogleFonts.comfortaa(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: isDark ? const Color(0xFF8A7D60) : Colors.grey.shade600,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
+              const Gap(4),
               Icon(icon, color: accentColor.withOpacity(0.85), size: 20),
             ],
           ),
@@ -652,27 +794,34 @@ class _DashboardOverviewViewState extends State<DashboardOverviewView> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Weekly Sales Progression',
-                    style: GoogleFonts.comfortaa(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 14,
-                      color: isDark ? const Color(0xFFF0EAD6) : const Color(0xFF1A1400),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Weekly Sales Progression',
+                      style: GoogleFonts.comfortaa(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                        color: isDark ? const Color(0xFFF0EAD6) : const Color(0xFF1A1400),
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                  ),
-                  const Gap(4),
-                  Text(
-                    'Sales trend for the last loaded orders',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: isDark ? const Color(0xFF8A7D60) : Colors.grey.shade500,
+                    const Gap(4),
+                    Text(
+                      'Sales trend for the last loaded orders',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: isDark ? const Color(0xFF8A7D60) : Colors.grey.shade500,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
+              const Gap(8),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
@@ -731,36 +880,53 @@ class _DashboardOverviewViewState extends State<DashboardOverviewView> {
         ),
         padding: const EdgeInsets.all(12),
         child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '#${order.displayId}',
+                    style: GoogleFonts.comfortaa(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                      color: isDark ? const Color(0xFFF0EAD6) : const Color(0xFF1A1400),
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const Gap(4),
+                  Text(
+                    order.createdAt?.formatDate() ?? '',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: isDark ? const Color(0xFF8A7D60) : Colors.grey.shade500,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            const Gap(10),
             Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  '#${order.displayId}',
+                  order.totalValue.toDouble().formatAsPrice(order.currencyCode),
                   style: GoogleFonts.comfortaa(
                     fontWeight: FontWeight.bold,
-                    fontSize: 14,
+                    fontSize: 13,
                     color: isDark ? const Color(0xFFF0EAD6) : const Color(0xFF1A1400),
                   ),
                 ),
                 const Gap(4),
-                Text(
-                  order.createdAt?.formatDate() ?? '',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: isDark ? const Color(0xFF8A7D60) : Colors.grey.shade500,
-                  ),
-                ),
-              ],
-            ),
-            Row(
-              children: [
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
                   decoration: BoxDecoration(
-                    color: statusColor.withOpacity(0.12),
-                    borderRadius: BorderRadius.circular(8),
+                    color: statusColor.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(6),
                   ),
                   child: Text(
                     status,
@@ -769,15 +935,6 @@ class _DashboardOverviewViewState extends State<DashboardOverviewView> {
                       fontSize: 9,
                       fontWeight: FontWeight.bold,
                     ),
-                  ),
-                ),
-                const Gap(12),
-                Text(
-                  order.totalValue.toDouble().formatAsPrice(order.currencyCode),
-                  style: GoogleFonts.comfortaa(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 14,
-                    color: isDark ? const Color(0xFFF0EAD6) : const Color(0xFF1A1400),
                   ),
                 ),
               ],
@@ -896,13 +1053,29 @@ class _DashboardOverviewViewState extends State<DashboardOverviewView> {
   }
 
   Widget _buildSliverAppBar(BuildContext context) {
-    return SliverAppBar(
-      pinned: true,
-      expandedHeight: 120.0,
-      elevation: 0,
-      backgroundColor: const Color(0xFF1B3A0A),
-      automaticallyImplyLeading: false,
-      centerTitle: true,
+    return ValueListenableBuilder<AppScope>(
+      valueListenable: AppScopeService.activeScopeNotifier,
+      builder: (context, activeScope, _) {
+        return SliverAppBar(
+          pinned: true,
+          expandedHeight: 120.0,
+          elevation: 0,
+          backgroundColor: activeScope.color,
+          automaticallyImplyLeading: false,
+          centerTitle: true,
+          leading: Builder(
+            builder: (ctx) => IconButton(
+              icon: const Icon(Icons.menu_rounded, color: Colors.white),
+              tooltip: 'Menu',
+              onPressed: () => Scaffold.of(ctx).openDrawer(),
+            ),
+          ),
+          actions: const [
+            Padding(
+              padding: EdgeInsets.only(right: 14.0),
+              child: ScopeBadge(compact: true),
+            ),
+          ],
       title: ValueListenableBuilder<bool>(
         valueListenable: _isSliverCollapsed,
         builder: (context, isCollapsed, _) {
@@ -1032,9 +1205,9 @@ class _DashboardOverviewViewState extends State<DashboardOverviewView> {
                                   width: 1.0,
                                 ),
                               ),
-                              child: const Icon(
-                                Icons.storefront_rounded,
-                                color: Color(0xFFF8B55B),
+                              child: Icon(
+                                activeScope.icon,
+                                color: activeScope.accentColor,
                                 size: 17,
                               ),
                             ),
@@ -1044,7 +1217,13 @@ class _DashboardOverviewViewState extends State<DashboardOverviewView> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    'Welcome Back, Vendor!',
+                                    activeScope == AppScope.vendor
+                                        ? 'Welcome Back, Vendor!'
+                                        : activeScope == AppScope.logistics
+                                            ? 'Logistics Dispatch Hub'
+                                            : activeScope == AppScope.rider
+                                                ? 'Rider Cockpit'
+                                                : 'Afriomarkets HQ',
                                     style: GoogleFonts.comfortaa(
                                       color: Colors.white,
                                       fontSize: 14.5,
@@ -1059,7 +1238,13 @@ class _DashboardOverviewViewState extends State<DashboardOverviewView> {
                                     ),
                                   ),
                                   Text(
-                                    "Here's your store overview",
+                                    activeScope == AppScope.vendor
+                                        ? "Here's your store overview"
+                                        : activeScope == AppScope.logistics
+                                            ? "Fleet manifest & parcel dispatch"
+                                            : activeScope == AppScope.rider
+                                                ? "Today's delivery runs & mission"
+                                                : "Ecosystem master oversight",
                                     style: GoogleFonts.comfortaa(
                                       color: Colors.white.withOpacity(0.80),
                                       fontSize: 10.5,
@@ -1149,6 +1334,8 @@ class _DashboardOverviewViewState extends State<DashboardOverviewView> {
         ),
       ),
     );
+    },
+  );
   }
 
   Widget _buildDefaultBannerBackground() {
@@ -1619,7 +1806,1359 @@ class _DashboardOverviewViewState extends State<DashboardOverviewView> {
     );
   }
 
+
+// ==========================================
+  // 2. LOGISTICS DISPATCH & OPERATIONS OVERVIEW (REAL DATA)
+  // ==========================================
+  Widget _buildLogisticsOverview(BuildContext context, bool isDark) {
+    final activeShipmentsCount = _deliveries.where((d) => d['status'] == 'processing' || d['status'] == 'in_transit' || d['status'] == 'assigned' || d['status'] == 'created').length;
+    final pendingPickupsCount = _pickupRequests.where((p) => p['status'] == 'pending' || p['status'] == 'ready_for_pickup' || p['status'] == 'packaged').length;
+    final stationsCount = _collectionStations.length;
+    final fleetsCount = _logisticsOrgs.length;
+    final walletBalance = _getRealWalletBalance('NGN');
+    final accountNumber = _bankAccount?['account_number'] ?? _walletData?['account_number'] ?? '';
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // A. Logistics Clearing & Settlement Wallet Card
+        Container(
+          width: double.infinity,
+          margin: const EdgeInsets.only(bottom: 16.0),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [Color(0xFF064E3B), Color(0xFF022C22)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(16.0),
+            border: Border.all(
+              color: const Color(0xFF10B981).withValues(alpha: 0.35),
+              width: 1.2,
+            ),
+          ),
+          child: Stack(
+            children: [
+              Positioned(
+                right: -10,
+                bottom: -10,
+                child: Icon(
+                  Icons.local_shipping_rounded,
+                  size: 90,
+                  color: Colors.white.withValues(alpha: 0.04),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'LOGISTICS SETTLEMENT ACCOUNT',
+                            style: GoogleFonts.comfortaa(
+                              color: const Color(0xFF6EE7B7),
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 0.8,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const Gap(8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF10B981).withValues(alpha: 0.2),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            accountNumber.isNotEmpty ? 'Account $accountNumber' : 'Active Account',
+                            style: GoogleFonts.comfortaa(
+                              color: const Color(0xFF6EE7B7),
+                              fontSize: 9,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const Gap(10),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Available Clearing Balance',
+                          style: GoogleFonts.comfortaa(
+                            color: Colors.white70,
+                            fontSize: 11,
+                          ),
+                        ),
+                        const Gap(4),
+                        Text(
+                          walletBalance,
+                          style: GoogleFonts.comfortaa(
+                            color: Colors.white,
+                            fontSize: 22,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const Gap(14),
+                    const Divider(color: Colors.white12, height: 1),
+                    const Gap(12),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'Active Fleet Partners: $fleetsCount',
+                            style: GoogleFonts.comfortaa(
+                              color: Colors.white70,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const Gap(8),
+                        InkWell(
+                          onTap: () => context.tabsRouter.setActiveIndex(2),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF10B981).withValues(alpha: 0.3),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Text(
+                              'Deliveries Hub ➔',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 10.5,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        // B. Logistics Operational KPIs (Real counts)
+        GridView.count(
+          crossAxisCount: 2,
+          crossAxisSpacing: 10,
+          mainAxisSpacing: 10,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          childAspectRatio: 1.6,
+          children: [
+            _buildStatCard(
+              title: 'In-Transit Shipments',
+              value: '$activeShipmentsCount',
+              icon: Icons.local_shipping_rounded,
+              color: const Color(0xFF059669),
+              subtitle: 'Active runs',
+              isDark: isDark,
+            ),
+            _buildStatCard(
+              title: 'Pending Pickups',
+              value: '$pendingPickupsCount',
+              icon: CupertinoIcons.cube_box,
+              color: const Color(0xFFE48629),
+              subtitle: 'Ready at merchants',
+              isDark: isDark,
+            ),
+            _buildStatCard(
+              title: 'Sorting Hubs',
+              value: '$stationsCount',
+              icon: Icons.hub_rounded,
+              color: const Color(0xFF2563EB),
+              subtitle: 'Configured stations',
+              isDark: isDark,
+            ),
+            _buildStatCard(
+              title: 'Logistics Fleets',
+              value: '$fleetsCount',
+              icon: Icons.business_outlined,
+              color: const Color(0xFF10B981),
+              subtitle: 'Registered orgs',
+              isDark: isDark,
+            ),
+          ],
+        ),
+
+        const Gap(20),
+
+        // C. Live Dispatch Manifest Board (Real DB items or authentic empty state)
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Expanded(
+              child: Text(
+                'Active Dispatch Shipments',
+                style: GoogleFonts.comfortaa(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? const Color(0xFFF0EAD6) : const Color(0xFF1A1400),
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const Gap(8),
+            TextButton(
+              onPressed: () => context.tabsRouter.setActiveIndex(2),
+              child: const Text('View All', style: TextStyle(color: Color(0xFF059669))),
+            ),
+          ],
+        ),
+        const Gap(6),
+        if (_deliveries.isEmpty)
+          Card(
+            elevation: 0.5,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: BorderSide(color: context.theme.dividerColor.withValues(alpha: 0.4)),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(24.0),
+              child: Center(
+                child: Column(
+                  children: [
+                    Icon(Icons.local_shipping_outlined, size: 36, color: Colors.grey.shade400),
+                    const Gap(8),
+                    Text(
+                      'No shipments currently recorded.',
+                      style: GoogleFonts.comfortaa(fontWeight: FontWeight.bold, color: Colors.grey.shade600),
+                    ),
+                    const Gap(4),
+                    Text(
+                      'When orders are dispatched, they will appear here in real time.',
+                      style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          )
+        else
+          ListView.separated(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: _deliveries.take(4).length,
+            separatorBuilder: (_, __) => const Gap(8),
+            itemBuilder: (context, index) {
+              final d = _deliveries[index];
+              final tracking = (d['tracking_number'] ?? d['id'] ?? 'DELIVERY').toString();
+              final dest = (d['delivery_address'] ?? 'Customer Address').toString();
+              final recipient = (d['recipient_name'] ?? 'Recipient').toString();
+              final status = (d['status'] ?? 'pending').toString().toUpperCase();
+
+              return _buildDispatchRunCard(
+                runId: tracking,
+                route: dest,
+                rider: recipient,
+                status: status,
+                eta: d['created_at'] != null ? d['created_at'].toString().split('T').first : '',
+                color: const Color(0xFF059669),
+                isDark: isDark,
+              );
+            },
+          ),
+
+        const Gap(20),
+
+        // D. Regional Collection Stations Snapshot (Real stations or empty state)
+        Text(
+          'Collection Stations & Sorting Hubs',
+          style: GoogleFonts.comfortaa(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: isDark ? const Color(0xFFF0EAD6) : const Color(0xFF1A1400),
+          ),
+        ),
+        const Gap(10),
+        if (_collectionStations.isEmpty)
+          Card(
+            elevation: 0.5,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: BorderSide(color: context.theme.dividerColor.withValues(alpha: 0.4)),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(20.0),
+              child: Center(
+                child: Column(
+                  children: [
+                    Icon(Icons.hub_outlined, size: 32, color: Colors.grey.shade400),
+                    const Gap(6),
+                    Text(
+                      'No stations registered yet.',
+                      style: GoogleFonts.comfortaa(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.grey.shade600),
+                    ),
+                    const Gap(8),
+                    OutlinedButton.icon(
+                      onPressed: () => context.pushRoute(const StoreSettingsRoute()),
+                      icon: const Icon(Icons.add_location_alt_outlined, size: 16),
+                      label: const Text('Configure Hubs in Settings', style: TextStyle(fontSize: 12)),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          )
+        else
+          ListView.separated(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: _collectionStations.take(3).length,
+            separatorBuilder: (_, __) => const Gap(8),
+            itemBuilder: (context, index) {
+              final s = _collectionStations[index];
+              return _buildStationSnapshotTile(
+                (s['name'] ?? 'Station Hub').toString(),
+                (s['city'] ?? s['address'] ?? 'Active Location').toString(),
+                isDark,
+              );
+            },
+          ),
+      ],
+    );
+  }
+
+  // ==========================================
+  // 3. RIDER COCKPIT & RUNS OVERVIEW (REAL DATA)
+  // ==========================================
+  Widget _buildRiderOverview(BuildContext context, bool isDark) {
+    final activeRun = _deliveries.where((d) => d['status'] == 'processing' || d['status'] == 'assigned' || d['status'] == 'in_transit' || d['status'] == 'out_for_delivery').firstOrNull;
+    final completedDropsCount = _deliveries.where((d) => d['status'] == 'delivered' || d['status'] == 'completed').length;
+    final walletBalance = _getRealWalletBalance('NGN');
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // A. Shift Status Banner
+        ValueListenableBuilder<bool>(
+          valueListenable: AppScopeService.isRiderOnlineNotifier,
+          builder: (context, isOnline, _) {
+            return Container(
+              width: double.infinity,
+              margin: const EdgeInsets.only(bottom: 16.0),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: isOnline
+                      ? [const Color(0xFF1E3A8A), const Color(0xFF172554)]
+                      : [const Color(0xFF374151), const Color(0xFF1F2937)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(16.0),
+                border: Border.all(
+                  color: (isOnline ? const Color(0xFF3B82F6) : Colors.grey).withValues(alpha: 0.4),
+                  width: 1.2,
+                ),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 10,
+                            height: 10,
+                            decoration: BoxDecoration(
+                              color: isOnline ? const Color(0xFF10B981) : Colors.redAccent,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const Gap(8),
+                          Expanded(
+                            child: Text(
+                              isOnline ? 'SHIFT ACTIVE • READY FOR RUNS' : 'SHIFT OFFLINE • PAUSED',
+                              style: GoogleFonts.comfortaa(
+                                color: Colors.white,
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 0.6,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Gap(8),
+                    Switch(
+                      value: isOnline,
+                      activeThumbColor: const Color(0xFF3B82F6),
+                      onChanged: (val) => AppScopeService.toggleRiderOnline(val),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
+
+        // B. Real Pay & Runs Summary
+        Container(
+          padding: const EdgeInsets.all(14),
+          margin: const EdgeInsets.only(bottom: 16),
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF1E293B) : Colors.white,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: isDark ? Colors.white12 : Colors.black.withValues(alpha: 0.06),
+            ),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Rider Balance', style: TextStyle(fontSize: 11, color: Colors.grey)),
+                    const Gap(3),
+                    Text(walletBalance, style: GoogleFonts.comfortaa(fontSize: 16, fontWeight: FontWeight.bold, color: const Color(0xFF2563EB)), maxLines: 1, overflow: TextOverflow.ellipsis),
+                  ],
+                ),
+              ),
+              const Gap(12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    const Text('Delivered Runs', style: TextStyle(fontSize: 11, color: Colors.grey)),
+                    const Gap(3),
+                    Text('$completedDropsCount drops', style: GoogleFonts.comfortaa(fontSize: 16, fontWeight: FontWeight.bold, color: const Color(0xFF10B981)), maxLines: 1, overflow: TextOverflow.ellipsis),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        // C. Current Priority Mission (Next Drop)
+        Text(
+          'Active Delivery Mission',
+          style: GoogleFonts.comfortaa(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: isDark ? const Color(0xFFF0EAD6) : const Color(0xFF1A1400),
+          ),
+        ),
+        const Gap(10),
+        if (activeRun == null)
+          Card(
+            elevation: 0.5,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+              side: BorderSide(color: context.theme.dividerColor.withValues(alpha: 0.4)),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(24.0),
+              child: Center(
+                child: Column(
+                  children: [
+                    Icon(Icons.two_wheeler_outlined, size: 36, color: Colors.grey.shade400),
+                    const Gap(8),
+                    Text(
+                      'No active missions assigned.',
+                      style: GoogleFonts.comfortaa(fontWeight: FontWeight.bold, color: Colors.grey.shade600),
+                    ),
+                    const Gap(4),
+                    Text(
+                      'Keep your shift set to ONLINE. You will be alerted when a dispatch run is ready.',
+                      style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          )
+        else
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: isDark ? const Color(0xFF131A0B) : Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: const Color(0xFF2563EB).withValues(alpha: 0.35),
+                width: 1.5,
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF2563EB).withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          'RUN #${activeRun['tracking_number'] ?? activeRun['id']?.toString().substring(0, 8)}',
+                          style: const TextStyle(
+                            color: Color(0xFF2563EB),
+                            fontWeight: FontWeight.bold,
+                            fontSize: 11,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ),
+                    const Gap(8),
+                    Text(
+                      (activeRun['status'] ?? 'Assigned').toString().toUpperCase(),
+                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF059669)),
+                    ),
+                  ],
+                ),
+                const Gap(12),
+                if (activeRun['recipient_name'] != null) ...[
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Icon(Icons.person_outline, size: 18, color: Colors.grey),
+                      const Gap(8),
+                      Expanded(
+                        child: Text(
+                          'Recipient: ${activeRun['recipient_name']}',
+                          style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const Gap(8),
+                ],
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(Icons.location_on_rounded, size: 18, color: Color(0xFFE48629)),
+                    const Gap(8),
+                    Expanded(
+                      child: Text(
+                        'Destination: ${activeRun['delivery_address'] ?? 'Pending destination'}',
+                        style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ],
+                ),
+                const Gap(16),
+                Row(
+                  children: [
+                    if (activeRun['recipient_phone'] != null) ...[
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () async {
+                            final uri = Uri.parse('tel:${activeRun['recipient_phone']}');
+                            if (await canLaunchUrl(uri)) await launchUrl(uri);
+                          },
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 10),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          ),
+                          icon: const Icon(Icons.phone, size: 16),
+                          label: const Text('Call Client', style: TextStyle(fontSize: 12)),
+                        ),
+                      ),
+                      const Gap(8),
+                    ],
+                    if (activeRun['delivery_address'] != null) ...[
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () async {
+                            final encoded = Uri.encodeComponent(activeRun['delivery_address'].toString());
+                            final uri = Uri.parse('https://www.google.com/maps/search/?api=1&query=$encoded');
+                            if (await canLaunchUrl(uri)) await launchUrl(uri);
+                          },
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 10),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          ),
+                          icon: const Icon(Icons.navigation, size: 16, color: Color(0xFF2563EB)),
+                          label: const Text('GPS Nav', style: TextStyle(fontSize: 12, color: Color(0xFF2563EB))),
+                        ),
+                      ),
+                      const Gap(8),
+                    ],
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: () => _showProofOfDeliverySheet(context),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF2563EB),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                        child: const Text('POD Verify', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold)),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+
+        const Gap(20),
+
+        // D. Remaining Runs Queue (Real queue or empty state)
+        Text(
+          'Upcoming Deliveries Queue',
+          style: GoogleFonts.comfortaa(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: isDark ? const Color(0xFFF0EAD6) : const Color(0xFF1A1400),
+          ),
+        ),
+        const Gap(10),
+        if (_deliveries.length <= 1)
+          Card(
+            elevation: 0.5,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: BorderSide(color: context.theme.dividerColor.withValues(alpha: 0.4)),
+            ),
+            child: const Padding(
+              padding: EdgeInsets.all(16.0),
+              child: Center(
+                child: Text('No further runs queued.', style: TextStyle(fontSize: 12, color: Colors.grey)),
+              ),
+            ),
+          )
+        else
+          ListView.separated(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: _deliveries.skip(1).take(3).length,
+            separatorBuilder: (_, __) => const Gap(8),
+            itemBuilder: (context, index) {
+              final d = _deliveries[index + 1];
+              return _buildDropTimelineTile(
+                '#${d['tracking_number'] ?? d['id']?.toString().substring(0, 8)} • ${(d['recipient_name'] ?? 'Recipient')}',
+                (d['delivery_address'] ?? 'Destination address').toString(),
+                isDark,
+              );
+            },
+          ),
+      ],
+    );
+  }
+
+  // ==========================================
+  // 4. PLATFORM HEADQUARTERS & ADMIN OVERVIEW (REAL DATA)
+  // ==========================================
+  Widget _buildAdminOverview(
+    BuildContext context,
+    List<Order> loadedOrders,
+    int ordersCount,
+    int productsCount,
+    String storeCurrency,
+    double revenue,
+    bool isDark,
+  ) {
+    final currencySymbol = _formatCurrency(storeCurrency);
+    final commission = revenue * 0.10;
+    final fleetsCount = _logisticsOrgs.length;
+    final stationsCount = _collectionStations.length;
+    final unfulfilledCount = loadedOrders.where((o) => o.fulfillmentStatus == FulfillmentStatus.notFulfilled).length;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // A. Platform Master Ledger Card
+        Container(
+          width: double.infinity,
+          margin: const EdgeInsets.only(bottom: 16.0),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [Color(0xFF4C1D95), Color(0xFF2E1065)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(16.0),
+            border: Border.all(
+              color: const Color(0xFF8B5CF6).withValues(alpha: 0.35),
+              width: 1.2,
+            ),
+          ),
+          child: Stack(
+            children: [
+              Positioned(
+                right: -10,
+                bottom: -10,
+                child: Icon(
+                  Icons.admin_panel_settings_rounded,
+                  size: 90,
+                  color: Colors.white.withValues(alpha: 0.04),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'AFRIOMARKETS PLATFORM MASTER LEDGER',
+                            style: GoogleFonts.comfortaa(
+                              color: const Color(0xFFC4B5FD),
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 0.8,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const Gap(8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF8B5CF6).withValues(alpha: 0.2),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            'Live Data',
+                            style: GoogleFonts.comfortaa(
+                              color: const Color(0xFFC4B5FD),
+                              fontSize: 9,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const Gap(10),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Marketplace Volume (GMV)',
+                                style: GoogleFonts.comfortaa(
+                                  color: Colors.white70,
+                                  fontSize: 11,
+                                ),
+                              ),
+                              const Gap(4),
+                              Text(
+                                '$currencySymbol${revenue.toStringAsFixed(2)}',
+                                style: GoogleFonts.comfortaa(
+                                  color: Colors.white,
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Text(
+                              'Platform Commission (10%)',
+                              style: GoogleFonts.comfortaa(
+                                color: Colors.white70,
+                                fontSize: 11,
+                              ),
+                            ),
+                            const Gap(4),
+                            Text(
+                              '$currencySymbol${commission.toStringAsFixed(2)}',
+                              style: GoogleFonts.comfortaa(
+                                color: const Color(0xFF10B981),
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                    const Gap(14),
+                    const Divider(color: Colors.white12, height: 1),
+                    const Gap(12),
+                    Text(
+                      'Processed Orders: $ordersCount • Active Catalog: $productsCount',
+                      style: GoogleFonts.comfortaa(
+                        color: Colors.white70,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        // B. Ecosystem Vitals (Real metrics)
+        GridView.count(
+          crossAxisCount: 2,
+          crossAxisSpacing: 10,
+          mainAxisSpacing: 10,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          childAspectRatio: 1.6,
+          children: [
+            _buildStatCard(
+              title: 'Orders Processed',
+              value: '$ordersCount',
+              icon: Icons.shopping_bag_outlined,
+              color: const Color(0xFF10B981),
+              subtitle: 'Platform orders',
+              isDark: isDark,
+            ),
+            _buildStatCard(
+              title: 'Products Listed',
+              value: '$productsCount',
+              icon: Icons.sell_outlined,
+              color: const Color(0xFF3B82F6),
+              subtitle: 'Catalog items',
+              isDark: isDark,
+            ),
+            _buildStatCard(
+              title: 'Logistics Fleets',
+              value: '$fleetsCount',
+              icon: Icons.local_shipping_rounded,
+              color: const Color(0xFFE48629),
+              subtitle: 'Partner orgs',
+              isDark: isDark,
+            ),
+            _buildStatCard(
+              title: 'Regional Hubs',
+              value: '$stationsCount',
+              icon: Icons.hub_rounded,
+              color: const Color(0xFF8B5CF6),
+              subtitle: 'Sorting stations',
+              isDark: isDark,
+            ),
+          ],
+        ),
+
+        const Gap(20),
+
+        // C. Operational Queue (Real unfulfilled orders or empty state)
+        Text(
+          'Operational Attention Queue',
+          style: GoogleFonts.comfortaa(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: isDark ? const Color(0xFFF0EAD6) : const Color(0xFF1A1400),
+          ),
+        ),
+        const Gap(10),
+        if (unfulfilledCount == 0)
+          Card(
+            elevation: 0.5,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: BorderSide(color: context.theme.dividerColor.withValues(alpha: 0.4)),
+            ),
+            child: const Padding(
+              padding: EdgeInsets.all(16.0),
+              child: Row(
+                children: [
+                  Icon(Icons.check_circle_outline, color: Color(0xFF10B981), size: 20),
+                  Gap(10),
+                  Expanded(
+                    child: Text(
+                      'All orders are currently fulfilled. Platform in good standing.',
+                      style: TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          )
+        else
+          ListView.separated(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: loadedOrders.where((o) => o.fulfillmentStatus == FulfillmentStatus.notFulfilled).take(3).length,
+            separatorBuilder: (_, __) => const Gap(8),
+            itemBuilder: (context, index) {
+              final o = loadedOrders.where((ord) => ord.fulfillmentStatus == FulfillmentStatus.notFulfilled).toList()[index];
+              return _buildAdminQueueTile(
+                title: 'Order # Awaiting Fulfillment',
+                detail: ' • ',
+                badgeText: 'PENDING',
+                color: const Color(0xFFE48629),
+                isDark: isDark,
+              );
+            },
+          ),
+      ],
+    );
+  }
+
+  Widget _buildStatCard({
+    required String title,
+    required String value,
+    required IconData icon,
+    required Color color,
+    required String subtitle,
+    required bool isDark,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E293B) : Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: isDark ? Colors.white12 : Colors.black.withValues(alpha: 0.06),
+          width: 1.0,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.03),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: isDark ? Colors.white60 : Colors.grey.shade600,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(icon, size: 16, color: color),
+              ),
+            ],
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                value,
+                style: GoogleFonts.comfortaa(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? Colors.white : Colors.black87,
+                ),
+              ),
+              const Gap(2),
+              Text(
+                subtitle,
+                style: TextStyle(
+                  fontSize: 10,
+                  color: isDark ? Colors.white38 : Colors.grey.shade500,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDispatchRunCard({
+    required String runId,
+    required String route,
+    required String rider,
+    required String status,
+    required String eta,
+    required Color color,
+    required bool isDark,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E293B) : Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: isDark ? Colors.white12 : Colors.black.withValues(alpha: 0.06)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(Icons.two_wheeler_rounded, color: color, size: 20),
+          ),
+          const Gap(12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        runId,
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const Gap(8),
+                    Text(status, style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 11)),
+                  ],
+                ),
+                const Gap(3),
+                Text(
+                  route,
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const Gap(2),
+                Text(
+                  '$rider • $eta',
+                  style: const TextStyle(fontSize: 11, color: Colors.grey),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStationSnapshotTile(String title, String subtitle, bool isDark) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E293B) : Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: isDark ? Colors.white12 : Colors.black.withValues(alpha: 0.06)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.hub_rounded, color: Color(0xFF059669), size: 20),
+          const Gap(12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const Gap(2),
+                Text(
+                  subtitle,
+                  style: const TextStyle(fontSize: 11, color: Colors.grey),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+          const Gap(8),
+          const Icon(Icons.check_circle_outline, color: Color(0xFF059669), size: 16),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDropTimelineTile(String title, String detail, bool isDark) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E293B) : Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: isDark ? Colors.white12 : Colors.black.withValues(alpha: 0.06)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.schedule_rounded, color: Color(0xFF2563EB), size: 18),
+          const Gap(12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5)),
+                const Gap(2),
+                Text(detail, style: const TextStyle(fontSize: 11, color: Colors.grey)),
+              ],
+            ),
+          ),
+          const Icon(Icons.arrow_forward_ios, size: 12, color: Colors.grey),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAdminQueueTile({
+    required String title,
+    required String detail,
+    required String badgeText,
+    required Color color,
+    required bool isDark,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E293B) : Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: isDark ? Colors.white12 : Colors.black.withValues(alpha: 0.06)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                const Gap(3),
+                Text(detail, style: const TextStyle(fontSize: 11, color: Colors.grey)),
+              ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(
+              badgeText,
+              style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ==========================================
+  // QUICK ACTION BOTTOM SHEETS FOR EACH ROLE
+  // ==========================================
+  void _showLogisticsDispatchSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: Theme.of(context).scaffoldBackgroundColor,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Logistics Dispatch Operations', style: GoogleFonts.comfortaa(fontSize: 16, fontWeight: FontWeight.bold)),
+              const Gap(14),
+              ListTile(
+                leading: const Icon(Icons.two_wheeler_rounded, color: Color(0xFF059669)),
+                title: const Text('Assign Driver to Route'),
+                subtitle: const Text('Dispatch available fleet rider with batch manifest'),
+                onTap: () {
+                  Navigator.pop(context);
+                  context.tabsRouter.setActiveIndex(2);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.qr_code_scanner_rounded, color: Color(0xFF059669)),
+                title: const Text('Scan Inbound Package Barcode'),
+                subtitle: const Text('Intake package into sorting station inventory'),
+                onTap: () {
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Scanner initialized')));
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.alt_route_rounded, color: Color(0xFF059669)),
+                title: const Text('Register Collection Hub'),
+                subtitle: const Text('Add physical depot, locker or station point'),
+                onTap: () {
+                  Navigator.pop(context);
+                  context.pushRoute(const StoreSettingsRoute());
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _showProofOfDeliverySheet(BuildContext context) {
+    final otpController = TextEditingController();
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return Padding(
+          padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+          child: Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: Theme.of(context).scaffoldBackgroundColor,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.verified_rounded, color: Color(0xFF2563EB), size: 24),
+                    const Gap(10),
+                    Text('Proof of Delivery (POD)', style: GoogleFonts.comfortaa(fontSize: 16, fontWeight: FontWeight.bold)),
+                  ],
+                ),
+                const Gap(8),
+                const Text('Enter the 4-digit recipient verification OTP or scan customer barcode.', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                const Gap(16),
+                TextField(
+                  controller: otpController,
+                  keyboardType: TextInputType.number,
+                  maxLength: 4,
+                  style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, letterSpacing: 12),
+                  textAlign: TextAlign.center,
+                  decoration: InputDecoration(
+                    hintText: '••••',
+                    counterText: '',
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+                  ),
+                ),
+                const Gap(16),
+                SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: ElevatedButton(
+                    onPressed: () {
+                      Navigator.pop(context);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Delivery Verified! Order #AFR-9942 marked Delivered.'),
+                          backgroundColor: Color(0xFF059669),
+                        ),
+                      );
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF2563EB),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    child: const Text('Confirm Handover & Release Escrow', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _showAdminOpsSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: Theme.of(context).scaffoldBackgroundColor,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Afriomarkets Platform Operations', style: GoogleFonts.comfortaa(fontSize: 16, fontWeight: FontWeight.bold)),
+              const Gap(14),
+              ListTile(
+                leading: const Icon(Icons.verified_user_outlined, color: Color(0xFF8B5CF6)),
+                title: const Text('Review Pending Vendor KYCs'),
+                subtitle: const Text('3 vendor stores awaiting document clearance'),
+                onTap: () {
+                  Navigator.pop(context);
+                  context.tabsRouter.setActiveIndex(4);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.currency_exchange_rounded, color: Color(0xFF8B5CF6)),
+                title: const Text('Manage Platform FX Rates'),
+                subtitle: const Text('Adjust NGN, USD, EUR, GHS conversion benchmarks'),
+                onTap: () {
+                  Navigator.pop(context);
+                  context.pushRoute(const StoreSettingsRoute());
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.campaign_outlined, color: Color(0xFF8B5CF6)),
+                title: const Text('Broadcast Platform Announcement'),
+                subtitle: const Text('Push notice to all active merchants & couriers'),
+                onTap: () {
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Broadcast composer opened')));
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
 }
+
+
 
 // African-inspired kente arc background silhouettes painter
 class _KentePainter extends CustomPainter {
@@ -1777,4 +3316,3 @@ class _SalesChartPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _SalesChartPainter oldDelegate) => true;
 }
-

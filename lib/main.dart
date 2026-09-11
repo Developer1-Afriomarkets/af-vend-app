@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 import 'src/core/di/medusa_admin_di.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -66,10 +68,18 @@ Future<void> main() async {
   //* We add the transformer directly here instead.
   try {
     final clientDio = GetIt.instance<Dio>();
+    if (kIsWeb) {
+      clientDio.options.extra['withCredentials'] = true;
+    }
     final alreadyAdded =
         clientDio.interceptors.any((i) => i is MedusaV1ResponseTransformer);
     if (!alreadyAdded) {
       clientDio.interceptors.insert(0, MedusaV1ResponseTransformer());
+    }
+    final hasAuth =
+        clientDio.interceptors.any((i) => i == MedusaAdminDi.authInterceptor);
+    if (!hasAuth) {
+      clientDio.interceptors.add(MedusaAdminDi.authInterceptor);
     }
   } catch (_) {
     // Dio not registered — safe to ignore.

@@ -1,3 +1,4 @@
+import 'package:medusa_admin/src/core/services/app_scope_service.dart';
 import 'dart:developer';
 import 'package:auto_route/auto_route.dart';
 import 'package:flutter/material.dart';
@@ -41,7 +42,7 @@ class _VendorWalletViewState extends State<VendorWalletView> with SingleTickerPr
   List<dynamic> _payouts = [];
 
   // Bank Setup Controls
-  List<dynamic> _banks = [];
+  List<Map<String, dynamic>> _banks = [];
   bool _isLoadingBanks = false;
   String? _selectedBankCode;
   String? _selectedBankName;
@@ -103,7 +104,7 @@ class _VendorWalletViewState extends State<VendorWalletView> with SingleTickerPr
       if (res.statusCode == 200 && res.data != null) {
         final list = (res.data['banks'] as List<dynamic>?) ?? [];
         setState(() {
-          _banks = list;
+          _banks = list.map((e) => Map<String, dynamic>.from(e as Map)).toList();
           if (_banks.isNotEmpty) {
             _selectedBankCode = _banks.first['code']?.toString();
             _selectedBankName = _banks.first['name']?.toString();
@@ -349,7 +350,15 @@ class _VendorWalletViewState extends State<VendorWalletView> with SingleTickerPr
             }
           },
         ),
-        title: const Text('Vendor Wallet & Payouts'),
+        title: Text(
+          AppScopeService.isLogistics
+              ? 'Logistics Org Clearing Wallet'
+              : AppScopeService.isRider
+                  ? 'Rider Earnings & Payout Wallet'
+                  : AppScopeService.isAdmin
+                      ? 'Platform Treasury & Clearing'
+                      : 'Vendor Merchant Wallet',
+        ),
         elevation: 0,
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(54),
@@ -357,17 +366,17 @@ class _VendorWalletViewState extends State<VendorWalletView> with SingleTickerPr
             height: 44,
             margin: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 5.0),
             decoration: BoxDecoration(
-              color: isDark ? Colors.white.withOpacity(0.08) : Colors.black.withOpacity(0.05),
+              color: isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.05),
               borderRadius: BorderRadius.circular(14.0),
             ),
             child: TabBar(
               controller: _tabController,
               indicator: BoxDecoration(
                 borderRadius: BorderRadius.circular(12.0),
-                color: const Color(0xFFE48629),
+                color: AppScopeService.activeScope.accentColor,
                 boxShadow: [
                   BoxShadow(
-                    color: const Color(0xFFE48629).withOpacity(0.35),
+                    color: AppScopeService.activeScope.accentColor.withValues(alpha: 0.35),
                     blurRadius: 6,
                     offset: const Offset(0, 2),
                   ),
@@ -425,16 +434,20 @@ class _VendorWalletViewState extends State<VendorWalletView> with SingleTickerPr
           padding: const EdgeInsets.all(20.0),
           decoration: BoxDecoration(
             gradient: LinearGradient(
-              colors: isDark
-                  ? [const Color(0xFF14281D), const Color(0xFF0F1E16)]
-                  : [const Color(0xFF1E3A8A), const Color(0xFF3B82F6)],
+              colors: AppScopeService.isLogistics
+                  ? (isDark ? [const Color(0xFF064E3B), const Color(0xFF022C22)] : [const Color(0xFF059669), const Color(0xFF10B981)])
+                  : AppScopeService.isRider
+                      ? (isDark ? [const Color(0xFF1E3A8A), const Color(0xFF172554)] : [const Color(0xFF2563EB), const Color(0xFF3B82F6)])
+                      : AppScopeService.isAdmin
+                          ? (isDark ? [const Color(0xFF4C1D95), const Color(0xFF2E1065)] : [const Color(0xFF7C3AED), const Color(0xFF8B5CF6)])
+                          : (isDark ? [const Color(0xFF2C3E1B), const Color(0xFF1B2C10)] : [const Color(0xFF1B3A0A), const Color(0xFFE48629)]),
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
             borderRadius: BorderRadius.circular(20.0),
             boxShadow: [
               BoxShadow(
-                color: Colors.blue.withOpacity(0.2),
+                color: AppScopeService.activeScope.accentColor.withValues(alpha: 0.2),
                 blurRadius: 15,
                 offset: const Offset(0, 6),
               ),
@@ -446,7 +459,16 @@ class _VendorWalletViewState extends State<VendorWalletView> with SingleTickerPr
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text('Total Vendor Balance', style: TextStyle(color: Colors.white70, fontSize: 13)),
+                  Text(
+                    AppScopeService.isLogistics
+                        ? 'Logistics Clearing Balance'
+                        : AppScopeService.isRider
+                            ? 'Available Courier Earnings'
+                            : AppScopeService.isAdmin
+                                ? 'Platform Master Treasury'
+                                : 'Merchant Clearing Balance',
+                    style: const TextStyle(color: Colors.white70, fontSize: 13),
+                  ),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(12)),
@@ -563,7 +585,17 @@ class _VendorWalletViewState extends State<VendorWalletView> with SingleTickerPr
                     children: [
                       const Icon(LucideIcons.checkCircle2, color: Colors.green, size: 20),
                       const Gap(8),
-                      const Expanded(child: Text('Configured Business Payout Account', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15), overflow: TextOverflow.ellipsis)),
+                      Expanded(
+                        child: Text(
+                          AppScopeService.isLogistics
+                              ? 'Configured Corporate Settlement Account'
+                              : AppScopeService.isRider
+                                  ? 'Configured Courier Payout Account'
+                                  : 'Configured Business Settlement Account',
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
                     ],
                   ),
                   const Divider(height: 20),
@@ -571,7 +603,10 @@ class _VendorWalletViewState extends State<VendorWalletView> with SingleTickerPr
                   const Gap(4),
                   Text('Account Number: ${_bankAccount?['account_number'] ?? ''}', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
                   const Gap(4),
-                  Text('Account Name: ${_bankAccount?['account_name'] ?? 'Verified Vendor'}', style: const TextStyle(fontSize: 14)),
+                  Text(
+                    'Account Name: ${_bankAccount?['account_name'] ?? (AppScopeService.isLogistics ? 'Verified Logistics Partner' : AppScopeService.isRider ? 'Verified Courier' : 'Verified Merchant')}',
+                    style: const TextStyle(fontSize: 14),
+                  ),
                 ],
               ),
             ),
@@ -580,35 +615,118 @@ class _VendorWalletViewState extends State<VendorWalletView> with SingleTickerPr
           const Text('Update Payout Bank Account', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
           const Gap(8),
         ] else ...[
-          const Text('Setup Business Payout Account', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-          const Text('Configure your Nigerian bank account to receive automated payout withdrawals.', style: TextStyle(color: Colors.grey)),
+          Text(
+            AppScopeService.isLogistics
+                ? 'Setup Corporate Settlement Account'
+                : AppScopeService.isRider
+                    ? 'Setup Courier Payout Account'
+                    : 'Setup Merchant Settlement Account',
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+          const Gap(4),
+          Text(
+            AppScopeService.isLogistics
+                ? 'Configure your corporate business bank account (CAC/RC registered) to receive automated freight deposits and dispatch fee settlements.'
+                : AppScopeService.isRider
+                    ? 'Configure your personal bank account for automated deposits of completed delivery drop fees and customer tips.'
+                    : 'Configure your verified business bank account to receive automatic sales payouts.',
+            style: const TextStyle(color: Colors.grey, fontSize: 12),
+          ),
           const Gap(16),
         ],
 
-        // Bank Selection Dropdown
+        // Searchable Bank Autocomplete Field
         if (_isLoadingBanks)
-          const CircularProgressIndicator()
+          const Center(child: Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator()))
         else
-          DropdownButtonFormField<String>(
-            isExpanded: true,
-            value: _selectedBankCode,
-            decoration: InputDecoration(
-              labelText: 'Select Bank',
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-              prefixIcon: const Icon(LucideIcons.landmark, size: 20),
-            ),
-            items: _banks.map((b) {
-              return DropdownMenuItem<String>(
-                value: b['code']?.toString(),
-                child: Text(b['name']?.toString() ?? '', overflow: TextOverflow.ellipsis),
-              );
-            }).toList(),
-            onChanged: (val) {
+          Autocomplete<Map<String, dynamic>>(
+            initialValue: TextEditingValue(text: _selectedBankName ?? ''),
+            displayStringForOption: (option) => option['name']?.toString() ?? '',
+            optionsBuilder: (TextEditingValue textEditingValue) {
+              if (textEditingValue.text.isEmpty) {
+                return _banks.take(15);
+              }
+              final query = textEditingValue.text.toLowerCase();
+              return _banks.where((Map<String, dynamic> b) {
+                final name = (b['name']?.toString() ?? '').toLowerCase();
+                return name.contains(query);
+              });
+            },
+            onSelected: (Map<String, dynamic> selection) {
               setState(() {
-                _selectedBankCode = val;
-                _selectedBankName = _banks.firstWhere((element) => element['code']?.toString() == val, orElse: () => {})['name']?.toString();
+                _selectedBankCode = selection['code']?.toString();
+                _selectedBankName = selection['name']?.toString();
                 _isAccountResolved = false;
               });
+            },
+            fieldViewBuilder: (context, fieldTextEditingController, fieldFocusNode, onFieldSubmitted) {
+              return TextFormField(
+                controller: fieldTextEditingController,
+                focusNode: fieldFocusNode,
+                decoration: InputDecoration(
+                  labelText: 'Select or Search Bank (e.g. Zenith, Kuda, GTB)',
+                  hintText: 'Type bank name to filter...',
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                  prefixIcon: const Icon(LucideIcons.landmark, size: 20),
+                  suffixIcon: fieldTextEditingController.text.isNotEmpty
+                      ? IconButton(
+                          icon: const Icon(Icons.clear, size: 18),
+                          onPressed: () {
+                            fieldTextEditingController.clear();
+                            setState(() {
+                              _selectedBankCode = null;
+                              _selectedBankName = null;
+                              _isAccountResolved = false;
+                            });
+                          },
+                        )
+                      : const Icon(Icons.arrow_drop_down),
+                ),
+                validator: (val) {
+                  if (_selectedBankCode == null || _selectedBankCode!.isEmpty) {
+                    return 'Please search and select a bank';
+                  }
+                  return null;
+                },
+              );
+            },
+            optionsViewBuilder: (context, onSelected, options) {
+              return Align(
+                alignment: Alignment.topLeft,
+                child: Material(
+                  elevation: 6.0,
+                  borderRadius: BorderRadius.circular(10),
+                  child: Container(
+                    width: MediaQuery.of(context).size.width - 64,
+                    constraints: const BoxConstraints(maxHeight: 250),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).cardColor,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: Theme.of(context).dividerColor.withValues(alpha: 0.3)),
+                    ),
+                    child: ListView.separated(
+                      padding: const EdgeInsets.symmetric(vertical: 6),
+                      shrinkWrap: true,
+                      itemCount: options.length,
+                      separatorBuilder: (_, __) => const Divider(height: 1),
+                      itemBuilder: (BuildContext context, int index) {
+                        final option = options.elementAt(index);
+                        return ListTile(
+                          dense: true,
+                          leading: const Icon(LucideIcons.building, size: 16, color: Color(0xFFE48629)),
+                          title: Text(
+                            option['name']?.toString() ?? '',
+                            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                          ),
+                          onTap: () {
+                            onSelected(option);
+                          },
+                        );
+                      },
+                    ),
+                  ),
+                ),
+              );
             },
           ),
         const Gap(14),

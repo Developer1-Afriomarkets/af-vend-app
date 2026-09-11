@@ -9,11 +9,12 @@ import 'package:medusa_js_dart/src/clients/store/store.dart' as store_client;
 /// which assigns `late final` fields — re-assigning them in a subclass
 /// constructor causes a [LateInitializationError].
 class InterceptedMedusa {
-  InterceptedMedusa(this.configuration, Dio dio)
+  InterceptedMedusa(this.configuration, this.dio)
       : admin = admin_client.Admin(dio),
         store = store_client.Store(dio);
 
   Configuration configuration;
+  final Dio dio;
 
   final admin_client.Admin admin;
   final store_client.Store store;

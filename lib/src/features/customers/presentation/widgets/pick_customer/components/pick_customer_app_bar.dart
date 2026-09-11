@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:medusa_admin/src/core/extensions/context_extension.dart';
@@ -37,14 +38,14 @@ class _PickCustomerAppBarState extends State<PickCustomerAppBar> {
         child: Row(
           children: [
             const SizedBox(width: 12.0),
-            if (Platform.isIOS)
+            if ((defaultTargetPlatform == TargetPlatform.iOS))
               Expanded(
                   child: CupertinoSearchTextField(
                 placeholder: 'Search for customer name, email address ...',
                 controller: widget.searchCtrl,
                 onChanged: widget.onChanged,
               )),
-            if (Platform.isAndroid)
+            if ((defaultTargetPlatform == TargetPlatform.android))
               Expanded(
                   child: Padding(
                 padding: const EdgeInsets.only(left: 16.0),

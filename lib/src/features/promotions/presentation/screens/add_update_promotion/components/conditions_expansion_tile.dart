@@ -1,4 +1,5 @@
 // import 'package:auto_route/auto_route.dart';
+import 'package:flutter/foundation.dart';
 // import 'package:flex_expansion_tile/flex_expansion_tile.dart';
 // import 'package:flutter/cupertino.dart';
 // import 'package:flutter/material.dart';
@@ -90,7 +91,7 @@
 //                   }
 //                 },
 //                 label: const Text('Add Condition'),
-//                 icon: Platform.isAndroid
+//                 icon: (defaultTargetPlatform == TargetPlatform.android)
 //                     ? const Icon(Icons.add)
 //                     : const Icon(CupertinoIcons.add),
 //               ),

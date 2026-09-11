@@ -2,19 +2,29 @@ import 'dart:convert';
 import 'package:auto_route/auto_route.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:gap/gap.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:medusa_admin/src/core/constants/colors.dart';
+import 'package:medusa_admin/src/core/di/di.dart';
 import 'package:medusa_admin/src/core/extensions/context_extension.dart';
 import 'package:medusa_admin/src/core/extensions/text_style_extension.dart';
-import 'package:medusa_admin/src/core/di/di.dart';
 import 'package:medusa_admin/src/core/extensions/medusa_model_extension.dart';
+import 'package:medusa_admin/src/features/auth/presentation/bloc/authentication/authentication_bloc.dart';
 import 'package:medusa_admin_dart_client/medusa_admin_dart_client_v2.dart';
 
 @RoutePage()
 class AddUpdateDeliveryView extends StatefulWidget {
-  const AddUpdateDeliveryView({super.key, this.delivery});
+  const AddUpdateDeliveryView({
+    super.key,
+    this.delivery,
+    this.preselectedOrderId,
+    this.preselectedRegionId,
+  });
+
   final Map<String, dynamic>? delivery;
+  final String? preselectedOrderId;
+  final String? preselectedRegionId;
 
   @override
   State<AddUpdateDeliveryView> createState() => _AddUpdateDeliveryViewState();
@@ -26,21 +36,38 @@ class _AddUpdateDeliveryViewState extends State<AddUpdateDeliveryView> {
 
   final driverNameCtrl = TextEditingController();
   final driverPhoneCtrl = TextEditingController();
-  final vehicleInfoCtrl = TextEditingController();
+  final vehiclePlateCtrl = TextEditingController();
+  final vehicleMakeCtrl = TextEditingController();
+  final destinationAddressCtrl = TextEditingController();
 
   List<Map<String, dynamic>> regions = [];
+  List<Map<String, dynamic>> logisticsOrgs = [];
+  List<Map<String, dynamic>> collectionStations = [];
   List<Order> availableOrders = [];
 
   String? selectedRegionId;
-  String selectedDeliveryMode = 'Standard';
-  String selectedRouteCategory = 'urban';
+  String? selectedLogisticsOrgId;
+  String? selectedOriginStationId;
+  String? selectedDestStationId;
+  String selectedDeliveryMode = 'doorstep';
+  String selectedRouteCategory = 'intra_state';
+  String selectedVehicleType = 'bike';
   List<String> selectedOrderIds = [];
 
   bool isLoadingRegions = true;
+  bool isLoadingLogistics = true;
+  bool isLoadingStations = true;
   bool isLoadingOrders = false;
   bool isSaving = false;
 
   bool get isEdit => widget.delivery != null;
+
+  final List<Map<String, dynamic>> vehicleOptions = [
+    {'type': 'bike', 'label': 'Motorcycle / Bike', 'icon': Icons.two_wheeler_rounded},
+    {'type': 'car', 'label': 'Car / Sedan', 'icon': Icons.directions_car_rounded},
+    {'type': 'van', 'label': 'Delivery Van', 'icon': Icons.airport_shuttle_rounded},
+    {'type': 'truck', 'label': 'Heavy Truck', 'icon': Icons.local_shipping_rounded},
+  ];
 
   @override
   void initState() {
@@ -49,10 +76,20 @@ class _AddUpdateDeliveryViewState extends State<AddUpdateDeliveryView> {
       final del = widget.delivery!;
       driverNameCtrl.text = del['driver_name']?.toString() ?? '';
       driverPhoneCtrl.text = del['driver_phone']?.toString() ?? '';
-      vehicleInfoCtrl.text = del['vehicle_info']?.toString() ?? '';
-      selectedDeliveryMode = del['delivery_mode']?.toString() ?? 'Standard';
-      selectedRouteCategory = del['route_category']?.toString().toLowerCase() ?? 'urban';
+      vehiclePlateCtrl.text = del['vehicle_vin_or_plate']?.toString() ?? '';
+      destinationAddressCtrl.text = del['dest_pickup_station_address']?.toString() ?? '';
+      selectedDeliveryMode = del['delivery_mode']?.toString().toLowerCase() ?? 'doorstep';
+      selectedRouteCategory = del['route_category']?.toString().toLowerCase() ?? 'intra_state';
+      selectedVehicleType = del['vehicle_type']?.toString().toLowerCase() ?? 'bike';
       selectedRegionId = del['region_id']?.toString();
+      selectedLogisticsOrgId = del['logistics_org_id']?.toString();
+      selectedOriginStationId = del['origin_collection_station_id']?.toString();
+      selectedDestStationId = del['dest_collection_station_id']?.toString();
+
+      final rawVehicle = del['vehicle_name_make_model_color'];
+      if (rawVehicle is List && rawVehicle.isNotEmpty) {
+        vehicleMakeCtrl.text = rawVehicle.first.toString();
+      }
 
       final rawOrderIds = del['order_ids'];
       if (rawOrderIds is List) {
@@ -65,39 +102,64 @@ class _AddUpdateDeliveryViewState extends State<AddUpdateDeliveryView> {
           }
         } catch (_) {}
       }
+    } else {
+      if (widget.preselectedOrderId != null) {
+        selectedOrderIds = [widget.preselectedOrderId!];
+      }
+      if (widget.preselectedRegionId != null) {
+        selectedRegionId = widget.preselectedRegionId;
+      }
     }
-    _fetchRegions();
+
+    _fetchInitialData();
   }
 
   @override
   void dispose() {
     driverNameCtrl.dispose();
     driverPhoneCtrl.dispose();
-    vehicleInfoCtrl.dispose();
+    vehiclePlateCtrl.dispose();
+    vehicleMakeCtrl.dispose();
+    destinationAddressCtrl.dispose();
     super.dispose();
   }
 
-  Future<void> _fetchRegions() async {
+  Future<void> _fetchInitialData() async {
     try {
-      final response = await supabase.from('region').select('*');
+      final results = await Future.wait([
+        supabase.from('region').select('*'),
+        supabase.from('logistics_orgs').select('*'),
+        supabase.from('collection_stations').select('*'),
+      ]);
+
       if (mounted) {
         setState(() {
-          regions = List<Map<String, dynamic>>.from(response);
+          regions = List<Map<String, dynamic>>.from(results[0]);
+          logisticsOrgs = List<Map<String, dynamic>>.from(results[1]);
+          collectionStations = List<Map<String, dynamic>>.from(results[2]);
           isLoadingRegions = false;
+          isLoadingLogistics = false;
+          isLoadingStations = false;
         });
         if (selectedRegionId != null) {
           _fetchOrdersForRegion(selectedRegionId!);
         }
       }
     } catch (e) {
-      if (mounted) setState(() => isLoadingRegions = false);
+      if (mounted) {
+        setState(() {
+          isLoadingRegions = false;
+          isLoadingLogistics = false;
+          isLoadingStations = false;
+        });
+      }
     }
   }
 
   Future<void> _fetchOrdersForRegion(String regionId) async {
     setState(() {
       isLoadingOrders = true;
-      if (!isEdit) {
+      if (!isEdit && widget.preselectedOrderId == null) {
         selectedOrderIds.clear();
       }
       availableOrders.clear();
@@ -112,7 +174,7 @@ class _AddUpdateDeliveryViewState extends State<AddUpdateDeliveryView> {
       );
       if (mounted) {
         setState(() {
-          availableOrders = response.orders ?? [];
+          availableOrders = response.orders;
           isLoadingOrders = false;
         });
       }
@@ -121,38 +183,43 @@ class _AddUpdateDeliveryViewState extends State<AddUpdateDeliveryView> {
     }
   }
 
+  String? _resolveCurrentVendorId() {
+    try {
+      final authState = context.read<AuthenticationBloc>().state;
+      return authState.mapOrNull(loggedIn: (s) => s.user.id);
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<void> _save() async {
     if (!formKey.currentState!.validate()) return;
     if (selectedOrderIds.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select at least one order.')),
+        const SnackBar(content: Text('Please select at least one order to dispatch.')),
       );
       return;
     }
 
     setState(() => isSaving = true);
     try {
-      final currentUser = supabase.auth.currentUser;
-      
-      Map<String, dynamic>? profile;
-      try {
-        final profileResponse = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', currentUser?.id ?? '')
-            .maybeSingle();
-        profile = profileResponse;
-      } catch (_) {}
+      final vendorId = _resolveCurrentVendorId() ?? 'usr_01J16HCWG0BRX883SXYFKFHJ81';
 
-      final payload = {
+      final payload = <String, dynamic>{
         'region_id': selectedRegionId,
-        'logistics_org_id': profile?['logistics_org_id'],
+        'logistics_org_id': selectedLogisticsOrgId != null ? int.tryParse(selectedLogisticsOrgId!) : null,
+        'origin_collection_station_id': selectedOriginStationId != null ? int.tryParse(selectedOriginStationId!) : null,
+        'dest_collection_station_id': selectedDestStationId != null ? int.tryParse(selectedDestStationId!) : null,
+        'dest_pickup_station_address': destinationAddressCtrl.text.trim().isNotEmpty ? destinationAddressCtrl.text.trim() : null,
         'order_ids': selectedOrderIds,
         'delivery_mode': selectedDeliveryMode,
-        'route_category': selectedRouteCategory.toLowerCase(),
-        'driver_name': driverNameCtrl.text,
-        'driver_phone': driverPhoneCtrl.text,
-        'vehicle_info': vehicleInfoCtrl.text,
+        'route_category': selectedRouteCategory,
+        'vehicle_type': selectedVehicleType,
+        'vehicle_vin_or_plate': vehiclePlateCtrl.text.trim(),
+        'vehicle_name_make_model_color': vehicleMakeCtrl.text.trim().isNotEmpty ? [vehicleMakeCtrl.text.trim()] : [],
+        'driver_name': driverNameCtrl.text.trim(),
+        'driver_phone': driverPhoneCtrl.text.trim(),
+        'vendor_id': vendorId,
         'updated_at': DateTime.now().toIso8601String(),
       };
 
@@ -162,7 +229,7 @@ class _AddUpdateDeliveryViewState extends State<AddUpdateDeliveryView> {
             .update(payload)
             .eq('id', widget.delivery!['id']);
       } else {
-        payload['status'] = 'pending';
+        payload['status'] = 'created';
         payload['created_at'] = DateTime.now().toIso8601String();
         await supabase.from('deliveries').insert(payload);
       }
@@ -173,22 +240,26 @@ class _AddUpdateDeliveryViewState extends State<AddUpdateDeliveryView> {
     } catch (e) {
       setState(() => isSaving = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to save delivery: $e')),
+        SnackBar(content: Text('Failed to save delivery dispatch: $e')),
       );
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final isDark = context.isDark;
     final border = OutlineInputBorder(
       borderRadius: const BorderRadius.all(Radius.circular(12.0)),
-      borderSide: BorderSide(color: Colors.grey.withValues(alpha: 0.3)),
+      borderSide: BorderSide(color: isDark ? Colors.white12 : Colors.grey.shade300),
     );
 
     return Scaffold(
       appBar: AppBar(
         leading: const CloseButton(),
-        title: Text(isEdit ? 'Edit Delivery' : 'Create Delivery'),
+        title: Text(
+          isEdit ? 'Edit Delivery Dispatch' : 'New Delivery Dispatch',
+          style: GoogleFonts.comfortaa(fontWeight: FontWeight.bold),
+        ),
         actions: [
           TextButton.icon(
             onPressed: isSaving ? null : _save,
@@ -207,92 +278,33 @@ class _AddUpdateDeliveryViewState extends State<AddUpdateDeliveryView> {
       ),
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.all(12.0),
+          padding: const EdgeInsets.all(14.0),
           child: Form(
             key: formKey,
             child: ListView(
               children: [
-                // Driver Information Card
+                // Routing & Category Card
                 Card(
                   elevation: 0,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16),
-                    side: BorderSide(color: Colors.grey.withValues(alpha: 0.2)),
+                    side: BorderSide(color: isDark ? Colors.white12 : Colors.grey.shade200),
                   ),
                   child: Padding(
                     padding: const EdgeInsets.all(16.0),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Driver Information', style: context.bodyLarge?.copyWith(fontWeight: FontWeight.bold)),
-                        const Gap(12),
-                        Text('Driver Name', style: context.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
-                        const Gap(6),
-                        TextFormField(
-                          controller: driverNameCtrl,
-                          style: context.bodyMedium,
-                          decoration: InputDecoration(
-                            enabledBorder: border,
-                            border: border,
-                            hintText: 'e.g. Samuel Okafor',
-                            prefixIcon: const Icon(CupertinoIcons.person),
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                          ),
-                          validator: (val) => val == null || val.isEmpty ? 'Field is required' : null,
+                        Row(
+                          children: [
+                            const Icon(Icons.route_rounded, size: 20, color: Color(0xFF1B3A0A)),
+                            const Gap(8),
+                            Text('Route & Mode', style: context.bodyLarge?.copyWith(fontWeight: FontWeight.bold)),
+                          ],
                         ),
-                        const Gap(12),
-                        Text('Driver Phone', style: context.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
-                        const Gap(6),
-                        TextFormField(
-                          controller: driverPhoneCtrl,
-                          style: context.bodyMedium,
-                          keyboardType: TextInputType.phone,
-                          decoration: InputDecoration(
-                            enabledBorder: border,
-                            border: border,
-                            hintText: '+234 801 234 5678',
-                            prefixIcon: const Icon(CupertinoIcons.phone),
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                          ),
-                          validator: (val) => val == null || val.isEmpty ? 'Field is required' : null,
-                        ),
-                        const Gap(12),
-                        Text('Vehicle Info / Registration', style: context.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
-                        const Gap(6),
-                        TextFormField(
-                          controller: vehicleInfoCtrl,
-                          style: context.bodyMedium,
-                          decoration: InputDecoration(
-                            enabledBorder: border,
-                            border: border,
-                            hintText: 'Toyota HiAce (LSD-123XY)',
-                            prefixIcon: const Icon(CupertinoIcons.bus),
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                          ),
-                          validator: (val) => val == null || val.isEmpty ? 'Field is required' : null,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                const Gap(16),
+                        const Gap(14),
 
-                // Delivery Configuration Card
-                Card(
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    side: BorderSide(color: Colors.grey.withValues(alpha: 0.2)),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Delivery Configuration', style: context.bodyLarge?.copyWith(fontWeight: FontWeight.bold)),
-                        const Gap(12),
-
-                        // Region Dropdown
+                        // Region
                         Text('Region', style: context.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
                         const Gap(6),
                         isLoadingRegions
@@ -305,9 +317,9 @@ class _AddUpdateDeliveryViewState extends State<AddUpdateDeliveryView> {
                                   prefixIcon: const Icon(CupertinoIcons.globe),
                                   contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                                 ),
-                                validator: (val) => val == null ? 'Field is required' : null,
+                                validator: (val) => val == null ? 'Region is required' : null,
                                 hint: const Text('Select Region'),
-                                value: selectedRegionId,
+                                initialValue: selectedRegionId,
                                 items: regions.map((reg) {
                                   return DropdownMenuItem<String>(
                                     value: reg['id']?.toString(),
@@ -319,32 +331,7 @@ class _AddUpdateDeliveryViewState extends State<AddUpdateDeliveryView> {
                                   if (val != null) _fetchOrdersForRegion(val);
                                 },
                               ),
-                        const Gap(12),
-
-                        // Delivery Mode
-                        Text('Delivery Mode', style: context.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
-                        const Gap(6),
-                        DropdownButtonFormField<String>(
-                          style: context.bodyMedium,
-                          decoration: InputDecoration(
-                            enabledBorder: border,
-                            border: border,
-                            prefixIcon: const Icon(CupertinoIcons.speedometer),
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                          ),
-                          value: selectedDeliveryMode,
-                          items: (() {
-                            final modes = ['Standard', 'Express', 'Next Day', 'Scheduled'];
-                            if (selectedDeliveryMode != null && !modes.contains(selectedDeliveryMode)) {
-                              modes.add(selectedDeliveryMode!);
-                            }
-                            return modes.map((mode) => DropdownMenuItem(value: mode, child: Text(mode))).toList();
-                          })(),
-                          onChanged: (val) {
-                            if (val != null) setState(() => selectedDeliveryMode = val);
-                          },
-                        ),
-                        const Gap(12),
+                        const Gap(14),
 
                         // Route Category
                         Text('Route Category', style: context.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
@@ -354,31 +341,273 @@ class _AddUpdateDeliveryViewState extends State<AddUpdateDeliveryView> {
                           decoration: InputDecoration(
                             enabledBorder: border,
                             border: border,
-                            prefixIcon: const Icon(CupertinoIcons.map_pin),
+                            prefixIcon: const Icon(Icons.alt_route_rounded),
                             contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                           ),
-                          value: selectedRouteCategory,
-                          items: [
-                            const DropdownMenuItem(value: 'urban', child: Text('Urban')),
-                            const DropdownMenuItem(value: 'suburban', child: Text('Suburban')),
-                            const DropdownMenuItem(value: 'interstate', child: Text('Interstate / Regional')),
+                          initialValue: selectedRouteCategory,
+                          items: const [
+                            DropdownMenuItem(value: 'intra_state', child: Text('Intra-State (Within State / City)')),
+                            DropdownMenuItem(value: 'inter_state', child: Text('Inter-State (Cross-State Transit)')),
+                            DropdownMenuItem(value: 'international', child: Text('International / Cross-Border')),
                           ],
                           onChanged: (val) {
                             if (val != null) setState(() => selectedRouteCategory = val);
+                          },
+                        ),
+                        const Gap(14),
+
+                        // Delivery Mode
+                        Text('Delivery Mode', style: context.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
+                        const Gap(6),
+                        DropdownButtonFormField<String>(
+                          style: context.bodyMedium,
+                          decoration: InputDecoration(
+                            enabledBorder: border,
+                            border: border,
+                            prefixIcon: const Icon(Icons.local_shipping_outlined),
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                          ),
+                          initialValue: selectedDeliveryMode,
+                          items: const [
+                            DropdownMenuItem(value: 'doorstep', child: Text('Doorstep Delivery to Customer')),
+                            DropdownMenuItem(value: 'pickup_station', child: Text('Collection Station / Hub Pickup')),
+                          ],
+                          onChanged: (val) {
+                            if (val != null) setState(() => selectedDeliveryMode = val);
                           },
                         ),
                       ],
                     ),
                   ),
                 ),
-                const Gap(16),
+                const Gap(14),
+
+                // Hubs & Partner Card
+                Card(
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    side: BorderSide(color: isDark ? Colors.white12 : Colors.grey.shade200),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.store_mall_directory_rounded, size: 20, color: Color(0xFFE48629)),
+                            const Gap(8),
+                            Text('Hubs & Fleet Partner', style: context.bodyLarge?.copyWith(fontWeight: FontWeight.bold)),
+                          ],
+                        ),
+                        const Gap(14),
+
+                        // Logistics Partner
+                        Text('Logistics Partner Organization', style: context.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
+                        const Gap(6),
+                        isLoadingLogistics
+                            ? const Center(child: CircularProgressIndicator.adaptive())
+                            : DropdownButtonFormField<String>(
+                                style: context.bodyMedium,
+                                decoration: InputDecoration(
+                                  enabledBorder: border,
+                                  border: border,
+                                  prefixIcon: const Icon(CupertinoIcons.building_2_fill),
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                ),
+                                hint: const Text('Select Partner (or Independent)'),
+                                initialValue: selectedLogisticsOrgId,
+                                items: logisticsOrgs.map((org) {
+                                  return DropdownMenuItem<String>(
+                                    value: org['id']?.toString(),
+                                    child: Text(org['name']?.toString() ?? 'Partner #${org['id']}'),
+                                  );
+                                }).toList(),
+                                onChanged: (val) => setState(() => selectedLogisticsOrgId = val),
+                              ),
+                        const Gap(14),
+
+                        // Origin Station
+                        Text('Origin Hub Station (Optional)', style: context.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
+                        const Gap(6),
+                        DropdownButtonFormField<String>(
+                          style: context.bodyMedium,
+                          decoration: InputDecoration(
+                            enabledBorder: border,
+                            border: border,
+                            prefixIcon: const Icon(Icons.outbox_rounded),
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                          ),
+                          hint: const Text('Select Origin Station'),
+                          initialValue: selectedOriginStationId,
+                          items: collectionStations.map((station) {
+                            return DropdownMenuItem<String>(
+                              value: station['id']?.toString(),
+                              child: Text(station['name']?.toString() ?? 'Station #${station['id']}'),
+                            );
+                          }).toList(),
+                          onChanged: (val) => setState(() => selectedOriginStationId = val),
+                        ),
+                        const Gap(14),
+
+                        // Destination Station or Address
+                        if (selectedDeliveryMode == 'pickup_station') ...[
+                          Text('Destination Collection Station', style: context.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
+                          const Gap(6),
+                          DropdownButtonFormField<String>(
+                            style: context.bodyMedium,
+                            decoration: InputDecoration(
+                              enabledBorder: border,
+                              border: border,
+                              prefixIcon: const Icon(Icons.move_to_inbox_rounded),
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                            ),
+                            hint: const Text('Select Destination Station'),
+                            initialValue: selectedDestStationId,
+                            items: collectionStations.map((station) {
+                              return DropdownMenuItem<String>(
+                                value: station['id']?.toString(),
+                                child: Text(station['name']?.toString() ?? 'Station #${station['id']}'),
+                              );
+                            }).toList(),
+                            onChanged: (val) => setState(() => selectedDestStationId = val),
+                          ),
+                        ] else ...[
+                          Text('Customer Delivery Address / Landmarks', style: context.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
+                          const Gap(6),
+                          TextFormField(
+                            controller: destinationAddressCtrl,
+                            decoration: InputDecoration(
+                              hintText: 'e.g. 14 Admiralty Way, Lekki Phase 1',
+                              prefixIcon: const Icon(Icons.location_on_rounded),
+                              enabledBorder: border,
+                              border: border,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+                const Gap(14),
+
+                // Driver & Vehicle Fleet Card
+                Card(
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    side: BorderSide(color: isDark ? Colors.white12 : Colors.grey.shade200),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.badge_rounded, size: 20, color: Color(0xFF2563EB)),
+                            const Gap(8),
+                            Text('Driver & Vehicle Details', style: context.bodyLarge?.copyWith(fontWeight: FontWeight.bold)),
+                          ],
+                        ),
+                        const Gap(14),
+
+                        // Vehicle Type Selector Chips
+                        Text('Vehicle Type', style: context.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
+                        const Gap(8),
+                        SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Row(
+                            children: vehicleOptions.map((v) {
+                              final isSelected = selectedVehicleType == v['type'];
+                              return Padding(
+                                padding: const EdgeInsets.only(right: 8.0),
+                                child: ChoiceChip(
+                                  avatar: Icon(v['icon'] as IconData, size: 16, color: isSelected ? Colors.white : Colors.grey),
+                                  label: Text(v['label'] as String, style: const TextStyle(fontSize: 12)),
+                                  selected: isSelected,
+                                  selectedColor: const Color(0xFF1B3A0A),
+                                  labelStyle: TextStyle(color: isSelected ? Colors.white : (isDark ? Colors.white70 : Colors.black87)),
+                                  onSelected: (val) {
+                                    if (val) setState(() => selectedVehicleType = v['type'] as String);
+                                  },
+                                ),
+                              );
+                            }).toList(),
+                          ),
+                        ),
+                        const Gap(14),
+
+                        Row(
+                          children: [
+                            Expanded(
+                              child: TextFormField(
+                                controller: driverNameCtrl,
+                                decoration: InputDecoration(
+                                  labelText: 'Driver Full Name',
+                                  prefixIcon: const Icon(Icons.person_rounded),
+                                  enabledBorder: border,
+                                  border: border,
+                                ),
+                              ),
+                            ),
+                            const Gap(10),
+                            Expanded(
+                              child: TextFormField(
+                                controller: driverPhoneCtrl,
+                                keyboardType: TextInputType.phone,
+                                decoration: InputDecoration(
+                                  labelText: 'Driver Phone',
+                                  prefixIcon: const Icon(Icons.phone_rounded),
+                                  enabledBorder: border,
+                                  border: border,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const Gap(12),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: TextFormField(
+                                controller: vehiclePlateCtrl,
+                                decoration: InputDecoration(
+                                  labelText: 'Plate / VIN #',
+                                  prefixIcon: const Icon(Icons.pin_rounded),
+                                  enabledBorder: border,
+                                  border: border,
+                                ),
+                              ),
+                            ),
+                            const Gap(10),
+                            Expanded(
+                              child: TextFormField(
+                                controller: vehicleMakeCtrl,
+                                decoration: InputDecoration(
+                                  labelText: 'Make/Model/Color',
+                                  hintText: 'e.g. Boxer, Red',
+                                  prefixIcon: const Icon(Icons.color_lens_rounded),
+                                  enabledBorder: border,
+                                  border: border,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const Gap(14),
 
                 // Order Picker Card
                 Card(
                   elevation: 0,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16),
-                    side: BorderSide(color: Colors.grey.withValues(alpha: 0.2)),
+                    side: BorderSide(color: isDark ? Colors.white12 : Colors.grey.shade200),
                   ),
                   child: Padding(
                     padding: const EdgeInsets.all(16.0),
@@ -389,7 +618,7 @@ class _AddUpdateDeliveryViewState extends State<AddUpdateDeliveryView> {
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             Text(
-                              'Select Orders (${selectedOrderIds.length})',
+                              'Orders to Dispatch (${selectedOrderIds.length})',
                               style: context.bodyLarge?.copyWith(fontWeight: FontWeight.bold),
                             ),
                             if (isLoadingOrders)
@@ -404,7 +633,7 @@ class _AddUpdateDeliveryViewState extends State<AddUpdateDeliveryView> {
                         selectedRegionId == null
                             ? const Padding(
                                 padding: EdgeInsets.all(12.0),
-                                child: Text('Please select a region first to load orders.', style: TextStyle(color: Colors.grey)),
+                                child: Text('Please select a region above to load pending orders.', style: TextStyle(color: Colors.grey)),
                               )
                             : isLoadingOrders
                                 ? const Center(
@@ -430,7 +659,7 @@ class _AddUpdateDeliveryViewState extends State<AddUpdateDeliveryView> {
                                             value: isSelected,
                                             activeColor: const Color(0xFFE48629),
                                             title: Text('Order #${order.displayId}', style: const TextStyle(fontWeight: FontWeight.bold)),
-                                            subtitle: Text('Customer: $customer\nTotal: $total'),
+                                            subtitle: Text('Customer: $customer • Total: $total'),
                                             onChanged: (checked) {
                                               setState(() {
                                                 if (checked == true) {

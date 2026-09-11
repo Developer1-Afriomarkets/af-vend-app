@@ -103,7 +103,7 @@ class ImageCard extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          image.path.split(Platform.pathSeparator).last,
+                          image.path.split(RegExp(r'[\\/]')).last,
                           style: smallTextStyle?.copyWith(
                               color: manatee, fontSize: 12),
                           overflow: TextOverflow.ellipsis,

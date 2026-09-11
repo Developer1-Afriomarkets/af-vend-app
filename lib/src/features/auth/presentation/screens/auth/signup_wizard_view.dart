@@ -6,17 +6,24 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_easyloading/flutter_easyloading.dart';
 import 'package:gap/gap.dart';
+import 'package:medusa_admin/src/core/constants/strings.dart';
 import 'package:medusa_admin/src/core/extensions/snack_bar_extension.dart';
 import 'package:medusa_admin/src/core/utils/hide_keyboard.dart';
 import 'package:medusa_admin/src/features/auth/data/service/auth_preference_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:medusa_admin/src/core/services/app_scope_service.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:medusa_admin/src/core/routing/app_router.dart';
+import 'package:medusa_admin/src/features/auth/presentation/bloc/authentication/authentication_bloc.dart';
 
 // ─── Onboarding API helpers ──────────────────────────────────────────────────
 // All calls go through the Medusa backend's public onboarding endpoints.
 // No hardcoded superadmin key, no cold-start Render server.
 class _OnboardingApi {
   static Dio _dio() {
-    final base = AuthPreferenceService.baseUrlGetter ?? '';
+    final base = AuthPreferenceService.baseUrlGetter?.isNotEmpty == true
+        ? AuthPreferenceService.baseUrlGetter!
+        : AppConstants.baseUrl;
     return Dio(BaseOptions(
       baseUrl: base,
       connectTimeout: const Duration(seconds: 45),
@@ -420,10 +427,49 @@ class _SignupWizardViewState extends State<SignupWizardView> {
             '[SignupWizard] Supabase sign-up non-fatal error: $supabaseErr');
       }
 
+      // Automatically align the initial operating scope and user metadata
+      await AppScopeService.setUserMetadata({
+        'account_type': _accountType,
+        'store_name': _storeNameCtrl.text.trim(),
+        'phone': phone,
+        'niche': _nicheCtrl.text.trim(),
+      });
+      if (_accountType == 'logistics_org') {
+        await AppScopeService.setScope(AppScope.logistics);
+      } else if (_accountType == 'logistics_staff') {
+        await AppScopeService.setScope(AppScope.rider);
+      } else {
+        await AppScopeService.setScope(AppScope.vendor);
+      }
+
+      EasyLoading.showSuccess('Registration successful! Signing in…');
+
+      try {
+        await AuthPreferenceService.instance.setEmail(email);
+        if (mounted) {
+          context.read<AuthenticationBloc>().add(
+            AuthenticationEvent.logInCookie(email, password),
+          );
+        }
+      } catch (loginErr) {
+        debugPrint('[SignupWizard] Auto-login dispatch error: $loginErr');
+      }
+
+      await Future.delayed(const Duration(milliseconds: 1200));
       EasyLoading.dismiss();
-      EasyLoading.showSuccess('Registration successful! Please log in.');
+
       if (!mounted) return;
-      context.router.pop();
+      final authState = context.read<AuthenticationBloc>().state;
+      final isLoggedIn =
+          authState.maybeWhen(loggedIn: (_) => true, orElse: () => false);
+
+      if (isLoggedIn) {
+        context.router.replaceAll([const MainAppRoute()]);
+      } else if (context.router.canPop()) {
+        context.router.pop();
+      } else {
+        context.router.replaceAll([SignInRoute()]);
+      }
     } on DioException catch (e) {
       EasyLoading.dismiss();
       if (!mounted) return;
@@ -448,8 +494,15 @@ class _SignupWizardViewState extends State<SignupWizardView> {
         appBar: AppBar(
           leading: IconButton(
             icon: const Icon(Icons.arrow_back),
-            onPressed:
-                _currentStep > 0 ? _prevStep : () => context.router.pop(),
+            onPressed: _currentStep > 0
+                ? _prevStep
+                : () {
+                    if (context.router.canPop()) {
+                      context.router.pop();
+                    } else {
+                      context.router.replaceAll([SignInRoute()]);
+                    }
+                  },
           ),
           title: const Text('Create Account'),
           centerTitle: true,
@@ -515,18 +568,21 @@ class _SignupWizardViewState extends State<SignupWizardView> {
             child: ListView(children: [
               _typeCard(
                   'vendor',
-                  'Vendor',
-                  'Register as a vendor seller to manage products and fulfill orders.',
+                  'Vendor / Merchant',
+                  'Sell products on Afriomarkets and manage store orders.',
                   Icons.storefront),
               const Gap(12),
               _typeCard(
-                  'logistics_staff',
-                  'Logistics Staff',
-                  'Participate as a logistics agent or dispatcher.',
+                  'logistics_org',
+                  'Logistics Organization',
+                  'Register a courier, delivery fleet, or sorting hub company.',
                   Icons.local_shipping),
               const Gap(12),
-              _typeCard('intern', 'Intern / Agent',
-                  'Access intern administrative controls.', Icons.badge),
+              _typeCard(
+                  'logistics_staff',
+                  'Delivery Rider / Fleet Staff',
+                  'Join an existing logistics company as a rider or dispatcher.',
+                  Icons.two_wheeler),
               const Gap(12),
               _typeCard(
                   'dropshipper',
@@ -601,15 +657,27 @@ class _SignupWizardViewState extends State<SignupWizardView> {
             _lbl('Niche / Category (Optional)'),
             const Gap(6),
             _fld(_nicheCtrl, 'e.g. fashion, electronics, cosmetics'),
+          ] else if (_accountType == 'logistics_org') ...[
+            _lbl('Logistics Company / Fleet Name *'),
+            const Gap(6),
+            _fld(_storeNameCtrl, 'e.g. Swift Air & Road Express Ltd'),
+            const Gap(16),
+            _lbl('Primary Operational City / Base *'),
+            const Gap(6),
+            _fld(_nicheCtrl, 'e.g. Lagos, Abuja, Port Harcourt, Accra'),
           ] else if (_accountType == 'logistics_staff' ||
               _accountType == 'intern') ...[
-            _lbl('Invite Code *'),
+            _lbl('Full Name / Rider Name *'),
             const Gap(6),
-            _fld(_inviteCodeCtrl, 'Enter registration invite code'),
+            _fld(_storeNameCtrl, 'e.g. Musa Ibrahim'),
+            const Gap(16),
+            _lbl('Logistics Organization / Station Invite Code *'),
+            const Gap(6),
+            _fld(_inviteCodeCtrl, 'Enter the invite code from your dispatch company'),
           ] else if (_accountType == 'dropshipper') ...[
-            _lbl('Niche Preferences (Optional)'),
+            _lbl('Catalog Sourcing Niche (Optional)'),
             const Gap(6),
-            _fld(_nicheCtrl, 'Enter categories of interest'),
+            _fld(_nicheCtrl, 'e.g. Electronics, Home Goods'),
           ],
           const Gap(32),
           _nextBtn('Next Step'),

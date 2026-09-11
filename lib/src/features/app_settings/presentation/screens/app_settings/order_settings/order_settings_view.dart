@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:adaptive_dialog/adaptive_dialog.dart';
 import 'package:auto_route/auto_route.dart';
 import 'package:flutter/foundation.dart';
@@ -53,7 +52,7 @@ class _OrderSettingsViewState extends State<OrderSettingsView> {
 
   @override
   Widget build(BuildContext context) {
-    final switchColor = Platform.isIOS ? ColorManager.primary : null;
+    final switchColor = (defaultTargetPlatform == TargetPlatform.iOS) ? ColorManager.primary : null;
     final smallTextStyle = context.bodySmall;
     return PopScope(
       canPop: mapEquals(
@@ -77,6 +76,10 @@ class _OrderSettingsViewState extends State<OrderSettingsView> {
           headerSliverBuilder: (context, innerBoxIsScrolled) => [
             MedusaSliverAppBar(
               title: const Text('Order Settings'),
+              leading: IconButton(
+                icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
+                onPressed: () => context.maybePop(),
+              ),
               actions: [
                 TextButton(
                     onPressed: mapEquals(orderPreference.toJson(),

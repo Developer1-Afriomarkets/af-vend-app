@@ -136,6 +136,10 @@ class _TaxSettingsViewState extends State<TaxSettingsView> {
       ],
       child: Scaffold(
         appBar: AppBar(
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
+            onPressed: () => context.maybePop(),
+          ),
           title: Text(widget.region.name ?? ''),
           actions: [
             TextButton(

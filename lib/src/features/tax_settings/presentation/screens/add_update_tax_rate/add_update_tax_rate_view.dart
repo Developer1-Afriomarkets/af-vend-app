@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:auto_route/auto_route.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
@@ -222,7 +223,7 @@ class _AddUpdateTaxRateViewState extends State<AddUpdateTaxRateView> {
                               child: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  Icon(Platform.isIOS
+                                  Icon((defaultTargetPlatform == TargetPlatform.iOS)
                                       ? CupertinoIcons.add
                                       : Icons.add),
                                   const Text(' Add Overrides')

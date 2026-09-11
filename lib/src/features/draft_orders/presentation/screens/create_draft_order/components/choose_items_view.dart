@@ -1,4 +1,5 @@
 // import 'dart:io';
+import 'package:flutter/foundation.dart';
 // import 'package:cached_network_image/cached_network_image.dart';
 // import 'package:flutter/cupertino.dart';
 // import 'package:flutter/material.dart';
@@ -29,7 +30,7 @@
 //                     child: Row(
 //                       mainAxisSize: MainAxisSize.min,
 //                       children: [
-//                         Icon(Platform.isIOS ? CupertinoIcons.add : Icons.add),
+//                         Icon((defaultTargetPlatform == TargetPlatform.iOS) ? CupertinoIcons.add : Icons.add),
 //                         const Text('Add Custom'),
 //                       ],
 //                     )),
@@ -45,7 +46,7 @@
 //                     child: Row(
 //                       mainAxisSize: MainAxisSize.min,
 //                       children: [
-//                         Icon(Platform.isIOS ? CupertinoIcons.add : Icons.add),
+//                         Icon((defaultTargetPlatform == TargetPlatform.iOS) ? CupertinoIcons.add : Icons.add),
 //                         const Text('Add Existing'),
 //                       ],
 //                     )),

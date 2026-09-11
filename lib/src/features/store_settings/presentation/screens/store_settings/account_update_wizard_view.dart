@@ -1,3 +1,4 @@
+import 'package:medusa_admin/src/core/services/app_scope_service.dart';
 import 'dart:developer';
 import 'package:auto_route/auto_route.dart';
 import 'package:flutter/material.dart';
@@ -262,9 +263,10 @@ class _AccountUpdateWizardViewState extends State<AccountUpdateWizardView> {
         );
       }
 
+      await AppScopeService.addAllowedScope(AppScope.vendor, switchToNewScope: true);
       dismissLoading();
       if (mounted) {
-        context.showSnackBar('Store and personal details updated successfully!');
+        context.showSnackBar('Store details updated successfully! Switched to Vendor Mode.');
         // Trigger Bloc reloads
         context.read<StoreBloc>().add(const StoreEvent.loadStores(null));
         context.read<UserCrudBloc>().add(const UserCrudEvent.loadCurrentUser());

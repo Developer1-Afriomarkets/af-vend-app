@@ -1,4 +1,5 @@
 // import 'dart:io';
+import 'package:flutter/foundation.dart';
 // import 'package:auto_route/auto_route.dart';
 // import 'package:flutter/cupertino.dart';
 // import 'package:flutter/material.dart';
@@ -99,8 +100,8 @@
 //               child: Row(
 //                 mainAxisSize: MainAxisSize.min,
 //                 children: [
-//                   if (Platform.isIOS) const Icon(CupertinoIcons.add),
-//                   if (Platform.isAndroid) const Icon(Icons.add),
+//                   if ((defaultTargetPlatform == TargetPlatform.iOS)) const Icon(CupertinoIcons.add),
+//                   if ((defaultTargetPlatform == TargetPlatform.android)) const Icon(Icons.add),
 //                   const Text('Add'),
 //                 ],
 //               ),
