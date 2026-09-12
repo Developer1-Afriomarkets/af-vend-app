@@ -1,3 +1,4 @@
+import 'package:medusa_admin/src/core/services/app_scope_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:dio/dio.dart';
 import 'dart:convert';
@@ -213,6 +214,11 @@ class MedusaV1ResponseTransformer extends Interceptor {
         path.startsWith('/admin/store/') ||
         path.startsWith('/admin/stores/')) {
       options.path = '/admin/store';
+      final currentStoreId = AppScopeService.currentStoreId;
+      if (currentStoreId != null && currentStoreId.isNotEmpty) {
+        options.queryParameters['store_id'] = currentStoreId;
+        options.headers['x-store-id'] = currentStoreId;
+      }
       if (options.method == 'POST' && options.data is Map) {
         final data = Map<String, dynamic>.from(options.data as Map);
         final v1Payload = <String, dynamic>{};
