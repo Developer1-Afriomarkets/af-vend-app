@@ -329,6 +329,7 @@ class _AddUpdatePickupRequestViewState extends State<AddUpdatePickupRequestView>
                         isLoadingRegions
                             ? const Center(child: CircularProgressIndicator.adaptive())
                             : DropdownButtonFormField<String>(
+                                  isExpanded: true,
                                 style: context.bodyMedium,
                                 decoration: InputDecoration(
                                   enabledBorder: border,
@@ -361,6 +362,7 @@ class _AddUpdatePickupRequestViewState extends State<AddUpdatePickupRequestView>
                         isLoadingStations
                             ? const Center(child: CircularProgressIndicator.adaptive())
                             : DropdownButtonFormField<String>(
+                                  isExpanded: true,
                                 style: context.bodyMedium,
                                 decoration: InputDecoration(
                                   enabledBorder: border,
@@ -386,6 +388,7 @@ class _AddUpdatePickupRequestViewState extends State<AddUpdatePickupRequestView>
                         isLoadingLogistics
                             ? const Center(child: CircularProgressIndicator.adaptive())
                             : DropdownButtonFormField<String>(
+                                  isExpanded: true,
                                 style: context.bodyMedium,
                                 decoration: InputDecoration(
                                   enabledBorder: border,

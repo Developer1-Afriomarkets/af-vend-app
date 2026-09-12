@@ -536,24 +536,33 @@ class _AddUpdateDeliveryViewState extends State<AddUpdateDeliveryView> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Row(
-                  children: [
-                    const CircleAvatar(
-                      radius: 12,
-                      backgroundColor: Color(0xFF1B3A0A),
-                      child: Icon(Icons.shopping_bag_outlined, size: 14, color: Colors.white),
-                    ),
-                    const Gap(8),
-                    Text(
-                      'Primary Dispatched Order $orderNum',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF1B3A0A),
-                        fontSize: 14,
+                Expanded(
+                  child: Row(
+                    children: [
+                      const CircleAvatar(
+                        radius: 12,
+                        backgroundColor: Color(0xFF1B3A0A),
+                        child: Icon(Icons.shopping_bag_outlined, size: 14, color: Colors.white),
                       ),
-                    ),
-                  ],
+                      const Gap(8),
+                      Expanded(
+                        child: Text(
+                          ord?.displayId != null
+                              ? 'Primary Order #${ord!.displayId}'
+                              : 'Order $orderNum',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF1B3A0A),
+                            fontSize: 14,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
+                const Gap(8),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
@@ -879,6 +888,7 @@ class _AddUpdateDeliveryViewState extends State<AddUpdateDeliveryView> {
             isLoadingRegions
                 ? const Center(child: CircularProgressIndicator.adaptive())
                 : DropdownButtonFormField<String>(
+                    isExpanded: true,
                     style: context.bodyMedium,
                     decoration: InputDecoration(
                       enabledBorder: border,
@@ -912,17 +922,27 @@ class _AddUpdateDeliveryViewState extends State<AddUpdateDeliveryView> {
                       Text('Route Scope', style: context.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
                       const Gap(6),
                       DropdownButtonFormField<String>(
+                        isExpanded: true,
                         style: context.bodyMedium,
                         decoration: InputDecoration(
                           enabledBorder: border,
                           border: border,
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
                         ),
                         initialValue: selectedRouteCategory,
                         items: const [
-                          DropdownMenuItem(value: 'intra_state', child: Text('Intra-State (Local)')),
-                          DropdownMenuItem(value: 'inter_state', child: Text('Inter-State')),
-                          DropdownMenuItem(value: 'international', child: Text('International')),
+                          DropdownMenuItem(
+                            value: 'intra_state',
+                            child: Text('Intra-State', overflow: TextOverflow.ellipsis),
+                          ),
+                          DropdownMenuItem(
+                            value: 'inter_state',
+                            child: Text('Inter-State', overflow: TextOverflow.ellipsis),
+                          ),
+                          DropdownMenuItem(
+                            value: 'international',
+                            child: Text('International', overflow: TextOverflow.ellipsis),
+                          ),
                         ],
                         onChanged: (val) {
                           if (val != null) setState(() => selectedRouteCategory = val);
@@ -931,7 +951,7 @@ class _AddUpdateDeliveryViewState extends State<AddUpdateDeliveryView> {
                     ],
                   ),
                 ),
-                const Gap(12),
+                const Gap(10),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -939,16 +959,23 @@ class _AddUpdateDeliveryViewState extends State<AddUpdateDeliveryView> {
                       Text('Delivery Mode', style: context.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
                       const Gap(6),
                       DropdownButtonFormField<String>(
+                        isExpanded: true,
                         style: context.bodyMedium,
                         decoration: InputDecoration(
                           enabledBorder: border,
                           border: border,
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
                         ),
                         initialValue: selectedDeliveryMode,
                         items: const [
-                          DropdownMenuItem(value: 'doorstep', child: Text('Doorstep Delivery')),
-                          DropdownMenuItem(value: 'pickup_station', child: Text('Station Pickup')),
+                          DropdownMenuItem(
+                            value: 'doorstep',
+                            child: Text('Doorstep', overflow: TextOverflow.ellipsis),
+                          ),
+                          DropdownMenuItem(
+                            value: 'pickup_station',
+                            child: Text('Station Pickup', overflow: TextOverflow.ellipsis),
+                          ),
                         ],
                         onChanged: (val) {
                           if (val != null) setState(() => selectedDeliveryMode = val);
@@ -980,6 +1007,7 @@ class _AddUpdateDeliveryViewState extends State<AddUpdateDeliveryView> {
               Text('Destination Collection Station', style: context.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
               const Gap(6),
               DropdownButtonFormField<String>(
+                isExpanded: true,
                 style: context.bodyMedium,
                 decoration: InputDecoration(
                   enabledBorder: border,
@@ -1030,6 +1058,7 @@ class _AddUpdateDeliveryViewState extends State<AddUpdateDeliveryView> {
             isLoadingLogistics
                 ? const Center(child: CircularProgressIndicator.adaptive())
                 : DropdownButtonFormField<String>(
+                    isExpanded: true,
                     style: context.bodyMedium,
                     decoration: InputDecoration(
                       enabledBorder: border,
@@ -1052,6 +1081,7 @@ class _AddUpdateDeliveryViewState extends State<AddUpdateDeliveryView> {
             Text('Origin Hub Station (Optional)', style: context.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
             const Gap(6),
             DropdownButtonFormField<String>(
+              isExpanded: true,
               style: context.bodyMedium,
               decoration: InputDecoration(
                 enabledBorder: border,
@@ -1212,28 +1242,34 @@ class _AddUpdateDeliveryViewState extends State<AddUpdateDeliveryView> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      isPrimaryMode ? 'Bundle Additional Orders (Optional)' : 'Orders to Dispatch (${selectedOrderIds.length})',
-                      style: context.bodyLarge?.copyWith(fontWeight: FontWeight.bold),
-                    ),
-                    const Gap(2),
-                    Text(
-                      isPrimaryMode
-                          ? 'Bundle other pending orders in this region into this run'
-                          : 'Select orders to include in this dispatch manifest',
-                      style: context.bodySmall?.copyWith(color: Colors.grey.shade600, fontSize: 11),
-                    ),
-                  ],
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        isPrimaryMode ? 'Bundle Additional Orders (Optional)' : 'Orders to Dispatch (${selectedOrderIds.length})',
+                        style: context.bodyLarge?.copyWith(fontWeight: FontWeight.bold),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const Gap(2),
+                      Text(
+                        isPrimaryMode
+                            ? 'Bundle other pending orders in this region into this run'
+                            : 'Select orders to include in this dispatch manifest',
+                        style: context.bodySmall?.copyWith(color: Colors.grey.shade600, fontSize: 11),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
                 ),
-                if (isLoadingOrders)
+                if (isLoadingOrders) ...[
+                  const Gap(8),
                   const SizedBox(
                     width: 16,
                     height: 16,
                     child: CircularProgressIndicator.adaptive(strokeWidth: 2),
                   ),
+                ],
               ],
             ),
             const Gap(12),
