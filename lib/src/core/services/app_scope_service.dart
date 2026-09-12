@@ -158,6 +158,29 @@ class AppScopeService {
   static bool get isRider => currentScope == AppScope.rider;
   static bool get isAdmin => currentScope == AppScope.admin;
 
+  static bool get isLogisticsAdmin {
+    final meta = _cachedMetadata ?? {};
+    final accType = (meta['account_type'] ?? '').toString().toLowerCase();
+    final logRole = (meta['logistics_role'] ?? '').toString().toLowerCase();
+    final role = (_cachedRole ?? '').toLowerCase();
+    return accType == 'logistics_org' || logRole == 'admin' || role.contains('admin');
+  }
+
+  static bool get isLogisticsStaff => (isLogistics || isRider) && !isLogisticsAdmin;
+
+  static bool get isVendorAdmin {
+    final meta = _cachedMetadata ?? {};
+    final accType = (meta['account_type'] ?? '').toString().toLowerCase();
+    final vendorRole = (meta['vendor_role'] ?? '').toString().toLowerCase();
+    final role = (_cachedRole ?? '').toLowerCase();
+    return accType == 'vendor' || vendorRole == 'owner' || vendorRole == 'admin' || role.contains('admin') || !accType.contains('staff');
+  }
+
+  static bool get isVendorStaff => isVendor && !isVendorAdmin;
+
+  static String get logisticsRoleTitle => isLogisticsAdmin ? 'Fleet Admin (Owner)' : 'Dispatch Staff';
+  static String get vendorRoleTitle => isVendorAdmin ? 'Store Owner' : 'Store Staff';
+
   static void toggleRiderOnline([bool? value]) {
     isRiderOnlineNotifier.value = value ?? !isRiderOnlineNotifier.value;
   }

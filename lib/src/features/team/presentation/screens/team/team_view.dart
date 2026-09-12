@@ -1,3 +1,4 @@
+import 'package:supabase_flutter/supabase_flutter.dart' hide User;
 import 'package:medusa_admin/src/core/services/app_scope_service.dart';
 import 'package:auto_route/auto_route.dart';
 import 'package:medusa_admin/src/core/routing/app_router.dart';
@@ -28,17 +29,58 @@ class _TeamViewState extends State<TeamView> {
   final refreshController = RefreshController();
   final pagingController =
       PagingController<int, User>(firstPageKey: 0, invisibleItemsThreshold: 3);
+  String? _adminUserId;
+
+  Future<void> _loadAdminInfo() async {
+    try {
+      if (AppScopeService.isLogistics && AppScopeService.currentLogisticsOrgId != null) {
+        final org = await Supabase.instance.client
+            .from('logistics_orgs')
+            .select('contact_info')
+            .eq('id', AppScopeService.currentLogisticsOrgId!)
+            .maybeSingle();
+        if (mounted && org != null && org['contact_info'] is Map) {
+          setState(() {
+            _adminUserId = org['contact_info']['admin_user_id']?.toString();
+          });
+        }
+      } else if (AppScopeService.isVendor && AppScopeService.currentStoreId != null) {
+        final store = await Supabase.instance.client
+            .from('store')
+            .select('metadata')
+            .eq('id', AppScopeService.currentStoreId!)
+            .maybeSingle();
+        if (mounted && store != null && store['metadata'] is Map) {
+          setState(() {
+            _adminUserId = store['metadata']['vendor_user_id']?.toString();
+          });
+        }
+      }
+    } catch (_) {}
+  }
 
   void _loadPage(int page) {
-    userCrudBloc.add(UserCrudEvent.loadAll(queryParameters: {
+    final Map<String, dynamic> params = {
       'offset': page == 0 ? 0 : pagingController.itemList?.length,
-    }));
+      'scope': AppScopeService.currentScope.name,
+    };
+    if (AppScopeService.isLogistics || AppScopeService.isRider) {
+      if (AppScopeService.currentLogisticsOrgId != null) {
+        params['logistics_org_id'] = AppScopeService.currentLogisticsOrgId;
+      }
+    } else if (AppScopeService.isVendor) {
+      if (AppScopeService.currentStoreId != null) {
+        params['store_id'] = AppScopeService.currentStoreId;
+      }
+    }
+    userCrudBloc.add(UserCrudEvent.loadAll(queryParameters: params));
   }
 
   @override
   void initState() {
     userCrudBloc = UserCrudBloc.instance;
     pagingController.addPageRequestListener(_loadPage);
+    _loadAdminInfo();
     super.initState();
   }
 
@@ -83,24 +125,30 @@ class _TeamViewState extends State<TeamView> {
         );
       },
       child: Scaffold(
-        floatingActionButton: FloatingActionButton.extended(
-          icon: const Icon(LucideIcons.userPlus),
-          label: const Text('Invite Member'),
-          onPressed: () async {
-            final result = await showModalBottomSheet<bool?>(
-              context: context,
-              isScrollControlled: true,
-              builder: (context) => const InviteUser(),
-            );
-            if (result == true) {
-              pagingController.refresh();
-            }
-          },
-        ),
+        floatingActionButton: (AppScopeService.isLogistics ? AppScopeService.isLogisticsAdmin : AppScopeService.isVendorAdmin)
+            ? FloatingActionButton.extended(
+                icon: const Icon(LucideIcons.userPlus),
+                label: Text(AppScopeService.isLogistics ? 'Invite Fleet Staff' : 'Invite Store Member'),
+                onPressed: () async {
+                  final result = await showModalBottomSheet<bool?>(
+                    context: context,
+                    isScrollControlled: true,
+                    builder: (context) => const InviteUser(),
+                  );
+                  if (result == true) {
+                    pagingController.refresh();
+                  }
+                },
+              )
+            : null,
         body: NestedScrollView(
           headerSliverBuilder: (context, innerBoxIsScrolled) => [
             MedusaSliverAppBar(
-              title: Text(AppScopeService.isLogistics ? 'Logistics Fleet & Dispatch Team' : 'The Team'),
+              title: Text(AppScopeService.isLogistics
+                  ? '${AppScopeService.organizationName} Dispatch Team'
+                  : (AppScopeService.displayName.isNotEmpty
+                      ? '${AppScopeService.displayName} Team'
+                      : 'Store Team Members')),
               leading: IconButton(
                 icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
                 onPressed: () => context.maybePop(),
@@ -122,8 +170,14 @@ class _TeamViewState extends State<TeamView> {
               builderDelegate: PagedChildBuilderDelegate<User>(
                 animateTransitions: true,
                 itemBuilder: (context, user, index) {
+                  final userIsAdmin = _adminUserId != null
+                      ? (user.id == _adminUserId)
+                      : (AppScopeService.isLogistics
+                          ? AppScopeService.isLogisticsAdmin
+                          : AppScopeService.isVendorAdmin);
                   return TeamCard(
                     user: user,
+                    isAdmin: userIsAdmin,
                     onEditTap: () async {
                       if (defaultTargetPlatform == TargetPlatform.iOS) {
                         await showCupertinoModalBottomSheet(

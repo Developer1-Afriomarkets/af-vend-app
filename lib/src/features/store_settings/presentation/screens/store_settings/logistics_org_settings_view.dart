@@ -1,5 +1,3 @@
-import 'dart:convert';
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:gap/gap.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -199,8 +197,9 @@ class _LogisticsOrgSettingsViewState extends State<LogisticsOrgSettingsView> {
           onPressed: () => Navigator.of(context).pop(),
         ),
         actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 8.0),
+          if (AppScopeService.isLogisticsAdmin)
+            Padding(
+              padding: const EdgeInsets.only(right: 8.0),
             child: TextButton.icon(
               onPressed: _isSaving ? null : _saveOrgData,
               icon: _isSaving
@@ -225,6 +224,29 @@ class _LogisticsOrgSettingsViewState extends State<LogisticsOrgSettingsView> {
               child: ListView(
                 padding: const EdgeInsets.all(16.0),
                 children: [
+                  if (!AppScopeService.isLogisticsAdmin) ...[
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 16),
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF0284C7).withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFF0284C7).withValues(alpha: 0.3)),
+                      ),
+                      child: const Row(
+                        children: [
+                          Icon(Icons.info_outline_rounded, color: Color(0xFF0284C7), size: 22),
+                          Gap(10),
+                          Expanded(
+                            child: Text(
+                              'Staff Member Access (Read-Only): Organization affairs, coverage areas, and payout accounts are managed exclusively by the fleet administrator.',
+                              style: TextStyle(fontSize: 12.5, color: Color(0xFF0284C7), fontWeight: FontWeight.w500),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                   Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
@@ -280,7 +302,7 @@ class _LogisticsOrgSettingsViewState extends State<LogisticsOrgSettingsView> {
                             ),
                             Switch(
                               value: _isActive,
-                              activeColor: const Color(0xFF10B981),
+                              activeThumbColor: const Color(0xFF10B981),
                               onChanged: (val) => setState(() => _isActive = val),
                             ),
                           ],
@@ -379,7 +401,7 @@ class _LogisticsOrgSettingsViewState extends State<LogisticsOrgSettingsView> {
                     isDark,
                     [
                       DropdownButtonFormField<String>(
-                        value: _selectedSla,
+                        initialValue: _selectedSla,
                         decoration: InputDecoration(
                           labelText: 'Guaranteed Delivery SLA',
                           prefixIcon: const Icon(LucideIcons.timer, size: 18, color: Color(0xFF059669)),

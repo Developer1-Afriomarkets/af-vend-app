@@ -131,14 +131,16 @@ class StoreSettingsView extends StatelessWidget {
             onTap: () => context.pushRoute(PickupRequestsRoute()),
           ),
 
-          const SettingsSectionHeader(title: 'Logistics Settlement & Bank Account'),
-          SettingsCardTile(
-            leadingIcon: LucideIcons.landmark,
-            iconColor: const Color(0xFF10B981),
-            title: 'Corporate Settlement Account & Bank Details',
-            subtitle: 'Configure verified business bank account (CAC/RC) for automated freight payouts',
-            onTap: () => context.pushRoute(const VendorWalletRoute()),
-          ),
+          if (AppScopeService.isLogisticsAdmin) ...[
+            const SettingsSectionHeader(title: 'Logistics Settlement & Bank Account'),
+            SettingsCardTile(
+              leadingIcon: LucideIcons.landmark,
+              iconColor: const Color(0xFF10B981),
+              title: 'Corporate Settlement Account & Bank Details',
+              subtitle: 'Configure verified business bank account (CAC/RC) for automated freight payouts',
+              onTap: () => context.pushRoute(const VendorWalletRoute()),
+            ),
+          ],
           SettingsCardTile(
             leadingIcon: LucideIcons.wallet,
             iconColor: Colors.green.shade600,

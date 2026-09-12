@@ -262,13 +262,24 @@ class ScopeSwitcherSheet extends StatelessWidget {
                                       ],
                                     ),
                                     const Gap(3),
-                                    Text(
-                                      scope.description,
-                                      style: TextStyle(
-                                        fontSize: 11,
-                                        color: isDark ? Colors.white54 : Colors.grey.shade600,
-                                      ),
-                                    ),
+                                    Builder(builder: (_) {
+                                      String subtitle = scope.description;
+                                      if (scope == AppScope.vendor && AppScopeService.displayName.isNotEmpty) {
+                                        subtitle = '${AppScopeService.displayName} • ${AppScopeService.isVendorAdmin ? 'Store Owner' : 'Store Staff'}';
+                                      } else if (scope == AppScope.logistics && AppScopeService.organizationName.isNotEmpty) {
+                                        subtitle = '${AppScopeService.organizationName} • ${AppScopeService.isLogisticsAdmin ? 'Fleet Admin (Owner)' : 'Dispatch Staff'}';
+                                      } else if (scope == AppScope.rider && AppScopeService.organizationName.isNotEmpty) {
+                                        subtitle = '${AppScopeService.organizationName} • Field Courier';
+                                      }
+                                      return Text(
+                                        subtitle,
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w500,
+                                          color: isDark ? Colors.white70 : Colors.grey.shade700,
+                                        ),
+                                      );
+                                    }),
                                   ],
                                 ),
                               ),

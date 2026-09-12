@@ -12,10 +12,12 @@ class TeamCard extends StatelessWidget {
   const TeamCard({
     super.key,
     required this.user,
+    this.isAdmin,
     this.onEditTap,
     this.onDeleteTap,
   });
   final User user;
+  final bool? isAdmin;
   final void Function()? onEditTap;
   final void Function()? onDeleteTap;
   @override
@@ -64,7 +66,8 @@ class TeamCard extends StatelessWidget {
               ],
             ),
           ),
-          IconButton(
+          if (AppScopeService.isLogistics ? AppScopeService.isLogisticsAdmin : AppScopeService.isVendorAdmin)
+            IconButton(
               padding: const EdgeInsets.all(16.0),
               onPressed: () async {
                 await showModalActionSheet<int>(
@@ -96,12 +99,24 @@ class TeamCard extends StatelessWidget {
   }
 
   Widget _buildRoleBadge(BuildContext context) {
-    final isLogistics = AppScopeService.isLogistics;
-    final isCurrent = user.email == AuthPreferenceService.email;
-    final label = isCurrent
-        ? (isLogistics ? 'Fleet Admin' : 'Admin')
-        : (isLogistics ? 'Dispatcher' : 'Staff');
-    final color = isLogistics ? const Color(0xFF059669) : const Color(0xFFE48629);
+    final isLogistics = AppScopeService.isLogistics || AppScopeService.isRider;
+    final userIsAdmin = isAdmin ?? false;
+
+    String label;
+    Color color;
+
+    if (isLogistics) {
+      if (userIsAdmin) {
+        label = 'Fleet Admin (Owner)';
+        color = const Color(0xFF059669); // Emerald Green
+      } else {
+        label = 'Dispatch Staff';
+        color = const Color(0xFF0284C7); // Sky Blue
+      }
+    } else {
+      label = userIsAdmin ? 'Store Owner' : 'Store Staff';
+      color = userIsAdmin ? const Color(0xFFE48629) : const Color(0xFF64748B);
+    }
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
