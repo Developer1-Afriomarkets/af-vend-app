@@ -643,105 +643,145 @@ class _DeliveriesDetailsViewState extends State<DeliveriesDetailsView> {
                     _buildProcessTimeline(status),
                     const Gap(12),
 
-                    // Stations Card (Origin -> Destination)
-                    if (originStation != null || destStation != null) ...[
-                      Card(
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                          side: BorderSide(color: Colors.grey.withValues(alpha: 0.2)),
-                        ),
-                        child: Padding(
-                          padding: const EdgeInsets.all(16.0),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  const Icon(Icons.route, size: 20, color: Color(0xFF1B3A0A)),
-                                  const Gap(8),
-                                  Text(
-                                    'Transit Route & Hub Stations',
-                                    style: context.bodyLarge?.copyWith(fontWeight: FontWeight.bold),
-                                  ),
-                                ],
-                              ),
-                              const Gap(14),
-                              if (originStation != null) ...[
-                                Row(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    const CircleAvatar(
-                                      radius: 12,
-                                      backgroundColor: Color(0x22E48629),
-                                      child: Icon(Icons.trip_origin, size: 14, color: Color(0xFFE48629)),
-                                    ),
-                                    const Gap(10),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Text('Origin Station', style: smallTextStyle?.copyWith(color: manatee)),
-                                          Text(
-                                            '${originStation!['name']} (${originStation!['city'] ?? ''})',
-                                            style: context.bodyMedium?.copyWith(fontWeight: FontWeight.bold),
-                                          ),
-                                          if (originStation!['address'] != null)
-                                            Text(
-                                              originStation!['address'].toString(),
-                                              style: smallTextStyle?.copyWith(color: manatee),
-                                            ),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const Padding(
-                                  padding: EdgeInsets.only(left: 11),
-                                  child: SizedBox(
-                                    height: 16,
-                                    child: VerticalDivider(thickness: 2, color: Colors.grey),
-                                  ),
-                                ),
-                              ],
-                              if (destStation != null) ...[
-                                Row(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    const CircleAvatar(
-                                      radius: 12,
-                                      backgroundColor: Color(0x221B3A0A),
-                                      child: Icon(Icons.location_on, size: 14, color: Color(0xFF1B3A0A)),
-                                    ),
-                                    const Gap(10),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Text('Destination Station', style: smallTextStyle?.copyWith(color: manatee)),
-                                          Text(
-                                            '${destStation!['name']} (${destStation!['city'] ?? ''})',
-                                            style: context.bodyMedium?.copyWith(fontWeight: FontWeight.bold),
-                                          ),
-                                          if (destStation!['address'] != null)
-                                            Text(
-                                              destStation!['address'].toString(),
-                                              style: smallTextStyle?.copyWith(color: manatee),
-                                            ),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ],
-                          ),
-                        ),
-                      ),
-                      const Gap(12),
-                    ],
+                    // Transit Route & Destination Card
+                    Builder(
+                      builder: (context) {
+                        final destDoorstep = delivery?['dest_pickup_station_address']?.toString();
+                        final hasRoute = originStation != null || destStation != null || (destDoorstep != null && destDoorstep.isNotEmpty);
 
-                    // Logistics Org Card
+                        if (!hasRoute) return const SizedBox.shrink();
+
+                        return Column(
+                          children: [
+                            Card(
+                              elevation: 0,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
+                                side: BorderSide(color: Colors.grey.withValues(alpha: 0.2)),
+                              ),
+                              child: Padding(
+                                padding: const EdgeInsets.all(16.0),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        const Icon(Icons.route, size: 20, color: Color(0xFF1B3A0A)),
+                                        const Gap(8),
+                                        Text(
+                                          'Transit Route & Destination',
+                                          style: context.bodyLarge?.copyWith(fontWeight: FontWeight.bold),
+                                        ),
+                                      ],
+                                    ),
+                                    const Gap(14),
+
+                                    // Origin
+                                    Row(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        const CircleAvatar(
+                                          radius: 12,
+                                          backgroundColor: Color(0x22E48629),
+                                          child: Icon(Icons.storefront_rounded, size: 14, color: Color(0xFFE48629)),
+                                        ),
+                                        const Gap(10),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Text('Dispatch Origin', style: smallTextStyle?.copyWith(color: manatee)),
+                                              Text(
+                                                originStation != null
+                                                    ? '${originStation!['name']} (${originStation!['city'] ?? ''})'
+                                                    : 'Merchant Store / Warehouse',
+                                                style: context.bodyMedium?.copyWith(fontWeight: FontWeight.bold),
+                                              ),
+                                              if (originStation?['address'] != null)
+                                                Text(
+                                                  originStation!['address'].toString(),
+                                                  style: smallTextStyle?.copyWith(color: manatee),
+                                                ),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+
+                                    const Padding(
+                                      padding: EdgeInsets.only(left: 11),
+                                      child: SizedBox(
+                                        height: 16,
+                                        child: VerticalDivider(thickness: 2, color: Colors.grey),
+                                      ),
+                                    ),
+
+                                    // Destination (Station or Customer Doorstep)
+                                    if (destStation != null) ...[
+                                      Row(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          const CircleAvatar(
+                                            radius: 12,
+                                            backgroundColor: Color(0x221B3A0A),
+                                            child: Icon(Icons.location_on, size: 14, color: Color(0xFF1B3A0A)),
+                                          ),
+                                          const Gap(10),
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                Text('Destination Collection Station', style: smallTextStyle?.copyWith(color: manatee)),
+                                                Text(
+                                                  '${destStation!['name']} (${destStation!['city'] ?? ''})',
+                                                  style: context.bodyMedium?.copyWith(fontWeight: FontWeight.bold),
+                                                ),
+                                                if (destStation!['address'] != null)
+                                                  Text(
+                                                    destStation!['address'].toString(),
+                                                    style: smallTextStyle?.copyWith(color: manatee),
+                                                  ),
+                                              ],
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ] else if (destDoorstep != null && destDoorstep.isNotEmpty) ...[
+                                      Row(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          const CircleAvatar(
+                                            radius: 12,
+                                            backgroundColor: Color(0x221B3A0A),
+                                            child: Icon(Icons.home_rounded, size: 14, color: Color(0xFF1B3A0A)),
+                                          ),
+                                          const Gap(10),
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                Text('Customer Delivery Address (Doorstep)', style: smallTextStyle?.copyWith(color: manatee)),
+                                                Text(
+                                                  destDoorstep,
+                                                  style: context.bodyMedium?.copyWith(fontWeight: FontWeight.bold),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                            ),
+                            const Gap(12),
+                          ],
+                        );
+                      },
+                    ),
+
+                    // Fulfillment Partner / In-House Model Card
                     if (logisticsOrg != null) ...[
                       Card(
                         elevation: 0,
@@ -780,6 +820,58 @@ class _DeliveriesDetailsViewState extends State<DeliveriesDetailsView> {
                                   icon: const Icon(Icons.phone, color: Color(0xFF1B3A0A), size: 18),
                                   onPressed: () => _callNumber(logisticsOrg!['phone'].toString()),
                                 ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const Gap(12),
+                    ] else ...[
+                      Card(
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                          side: BorderSide(color: const Color(0xFF1B3A0A).withValues(alpha: 0.2)),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.all(16.0),
+                          child: Row(
+                            children: [
+                              const CircleAvatar(
+                                backgroundColor: Color(0x181B3A0A),
+                                child: Icon(Icons.storefront_rounded, color: Color(0xFF1B3A0A)),
+                              ),
+                              const Gap(12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text('Fulfillment Model', style: smallTextStyle?.copyWith(color: manatee)),
+                                    Text(
+                                      'In-House Merchant Delivery',
+                                      style: context.bodyMedium?.copyWith(fontWeight: FontWeight.bold, color: const Color(0xFF1B3A0A)),
+                                    ),
+                                    Text(
+                                      'Direct doorstep delivery handled by store rider',
+                                      style: smallTextStyle?.copyWith(color: manatee, fontSize: 11),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF1B3A0A).withValues(alpha: 0.1),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: const Text(
+                                  'In-House',
+                                  style: TextStyle(
+                                    color: Color(0xFF1B3A0A),
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 11,
+                                  ),
+                                ),
+                              ),
                             ],
                           ),
                         ),

@@ -12,6 +12,7 @@ import 'package:medusa_admin/src/core/extensions/text_style_extension.dart';
 import 'package:medusa_admin/src/core/extensions/medusa_model_extension.dart';
 import 'package:medusa_admin/src/features/auth/presentation/bloc/authentication/authentication_bloc.dart';
 import 'package:medusa_admin_dart_client/medusa_admin_dart_client_v2.dart';
+import 'package:medusa_admin/src/core/services/app_scope_service.dart';
 
 @RoutePage()
 class AddUpdatePickupRequestView extends StatefulWidget {
@@ -151,15 +152,42 @@ class _AddUpdatePickupRequestViewState extends State<AddUpdatePickupRequestView>
     });
 
     try {
+      final queryParams = <String, dynamic>{
+        'region_id': regionId,
+        'limit': 50,
+      };
+
+      final currentStore = AppScopeService.currentStoreId;
+      if (AppScopeService.activeScope == AppScope.vendor && currentStore != null) {
+        queryParams['store_id'] = currentStore;
+      }
+
       final response = await getIt<MedusaAdminV2>().orders.list(
-        queryParameters: {
-          'region_id': regionId,
-          'limit': 50,
-        },
+        queryParameters: queryParams,
       );
       if (mounted) {
+        final rawOrders = response.orders;
+        final filtered = rawOrders.where((o) {
+          // Exclude canceled
+          if (o.status == OrderStatus.canceled) {
+            return false;
+          }
+          // Exclude fulfilled / shipped
+          if (o.fulfillmentStatus == FulfillmentStatus.fulfilled || o.fulfillmentStatus == FulfillmentStatus.shipped) {
+            return false;
+          }
+          // If in vendor scope, check store_id
+          if (AppScopeService.activeScope == AppScope.vendor && currentStore != null) {
+            final orderStoreId = o.metadata?['store_id']?.toString() ?? (o.metadata?['store'] is Map ? o.metadata!['store']['id']?.toString() : null);
+            if (orderStoreId != null && orderStoreId != currentStore) {
+              return false;
+            }
+          }
+          return true;
+        }).toList();
+
         setState(() {
-          availableOrders = response.orders;
+          availableOrders = filtered;
           isLoadingOrders = false;
         });
       }
@@ -222,10 +250,12 @@ class _AddUpdatePickupRequestViewState extends State<AddUpdatePickupRequestView>
         context.maybePop(true);
       }
     } catch (e) {
-      setState(() => isSaving = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to save pickup request: $e')),
-      );
+      if (mounted) {
+        setState(() => isSaving = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to save pickup request: $e')),
+        );
+      }
     }
   }
 
@@ -339,7 +369,7 @@ class _AddUpdatePickupRequestViewState extends State<AddUpdatePickupRequestView>
                                   contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                                 ),
                                 hint: const Text('Select Collection Hub Station'),
-                                value: selectedCollectionStationId,
+                                initialValue: selectedCollectionStationId,
                                 items: filteredStations.map((station) {
                                   return DropdownMenuItem<String>(
                                     value: station['id']?.toString(),

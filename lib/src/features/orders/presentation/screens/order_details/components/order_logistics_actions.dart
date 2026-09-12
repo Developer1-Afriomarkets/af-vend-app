@@ -1,5 +1,4 @@
 import 'package:auto_route/auto_route.dart';
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:medusa_admin/src/core/extensions/medusa_model_extension.dart';
 import 'package:gap/gap.dart';
@@ -130,6 +129,7 @@ class OrderLogisticsActions extends StatelessWidget {
                             AddUpdateDeliveryRoute(
                               preselectedOrderId: order.id,
                               preselectedRegionId: regionId,
+                              preselectedOrder: order,
                             ),
                           );
                         },
