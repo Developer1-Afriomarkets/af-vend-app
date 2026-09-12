@@ -103,21 +103,58 @@ class _DashboardOverviewViewState extends State<DashboardOverviewView> {
     try {
       final supabase = Supabase.instance.client;
       final orgId = AppScopeService.currentLogisticsOrgId;
+
+      // In logistics scope, strictly isolate deliveries & pickups by logistics_org_id
+      final deliveriesFuture = (orgId != null && orgId.isNotEmpty)
+          ? supabase.from('deliveries').select('*').eq('logistics_org_id', orgId).order('created_at', ascending: false).limit(20)
+          : Future.value(<Map<String, dynamic>>[]);
+
+      final pickupsFuture = (orgId != null && orgId.isNotEmpty)
+          ? supabase.from('pickup_requests').select('*').eq('logistics_org_id', orgId).order('created_at', ascending: false).limit(20)
+          : Future.value(<Map<String, dynamic>>[]);
+
+      final stationsFuture = supabase.from('collection_stations').select('*');
+      final orgsFuture = (orgId != null && orgId.isNotEmpty)
+          ? supabase.from('logistics_orgs').select('*').eq('id', orgId)
+          : supabase.from('logistics_orgs').select('*').limit(1);
+
       final results = await Future.wait([
-        orgId != null && orgId.isNotEmpty
-            ? supabase.from('deliveries').select('*').eq('logistics_org_id', orgId).order('created_at', ascending: false).limit(20)
-            : supabase.from('deliveries').select('*').order('created_at', ascending: false).limit(20),
-        orgId != null && orgId.isNotEmpty
-            ? supabase.from('pickup_requests').select('*').eq('logistics_org_id', orgId).order('created_at', ascending: false).limit(20)
-            : supabase.from('pickup_requests').select('*').order('created_at', ascending: false).limit(20),
-        supabase.from('collection_stations').select('*').limit(10),
-        supabase.from('logistics_orgs').select('*').limit(10),
+        deliveriesFuture,
+        pickupsFuture,
+        stationsFuture,
+        orgsFuture,
       ]);
+
       if (mounted) {
+        final rawStations = List<Map<String, dynamic>>.from(results[2]);
+
+        // Get store default currency to scope collection stations regionally
+        final storeState = context.read<StoreBloc>().state;
+        final String storeCurrency = storeState.mapOrNull(
+          stores: (r) => r.response.stores.firstOrNull?.supportedCurrencies
+              ?.where((sc) => sc.isDefault == true)
+              .map((sc) => sc.currencyCode)
+              .firstOrNull
+              ?? r.response.stores.firstOrNull?.supportedCurrencies?.firstOrNull?.currencyCode,
+        ) ?? 'ngn';
+
+        final scopedStations = rawStations.where((s) {
+          final addr = (s['address'] ?? '').toString().toLowerCase();
+          final name = (s['name'] ?? '').toString().toLowerCase();
+          if (storeCurrency.toLowerCase() == 'ngn') {
+            return addr.contains('naija') || addr.contains('lagos') || addr.contains('nigeria') || name.contains('naija');
+          } else if (storeCurrency.toLowerCase() == 'ghs') {
+            return addr.contains('ghana') || addr.contains('accra') || name.contains('ghana');
+          } else if (storeCurrency.toLowerCase() == 'eur' || storeCurrency.toLowerCase() == 'gbp') {
+            return addr.contains('uk') || addr.contains('united kingdom') || name.contains('uk') || addr.contains('manchester');
+          }
+          return true;
+        }).toList();
+
         setState(() {
           _deliveries = List<Map<String, dynamic>>.from(results[0]);
           _pickupRequests = List<Map<String, dynamic>>.from(results[1]);
-          _collectionStations = List<Map<String, dynamic>>.from(results[2]);
+          _collectionStations = scopedStations.isNotEmpty ? scopedStations : rawStations;
           _logisticsOrgs = List<Map<String, dynamic>>.from(results[3]);
         });
       }

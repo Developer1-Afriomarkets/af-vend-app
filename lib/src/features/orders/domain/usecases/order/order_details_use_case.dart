@@ -124,6 +124,36 @@ class OrderCrudUseCase {
       final result = await _orderRepository.createFulfillment(orderId, payload);
       return Success(result.order);
     } on DioException catch (e) {
+      // Robust Fallback: Medusa core expects `item_id` rather than `line_item_id`
+      try {
+        final rawItems = payload.items.map((it) {
+          final id = it.lineItemId ?? it.id;
+          return {
+            'item_id': id,
+            'line_item_id': id,
+            'quantity': it.quantity ?? 1,
+          };
+        }).toList();
+
+        final response = await getIt<Dio>().post(
+          '/admin/orders/$orderId/fulfillments',
+          data: {
+            'items': rawItems,
+            if (payload.locationId != null) 'location_id': payload.locationId,
+            if (payload.noNotification != null)
+              'no_notification': payload.noNotification,
+            if (payload.metadata != null) 'metadata': payload.metadata,
+          },
+        );
+
+        if (response.data is Map<String, dynamic> &&
+            response.data['order'] != null) {
+          final ord =
+              Order.fromJson(response.data['order'] as Map<String, dynamic>);
+          return Success(ord);
+        }
+      } catch (_) {}
+
       return Error(MedusaError.fromHttp(
         status: e.response?.statusCode,
         body: e.response?.data,

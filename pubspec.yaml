@@ -1,5 +1,5 @@
 name: medusa_admin
-version: 2.0.7+17
+version: 2.0.7+18
 publish_to: none
 description: A medusa store manger for mobile !.
 environment:
@@ -131,7 +131,7 @@ dev_dependencies:
     sdk: flutter
 
 flutter:
-  generate: true
+  generate: false
   assets:
     - assets/images/
     - assets/product-import-template.csv
@@ -141,7 +141,11 @@ flutter:
       fonts:
         - asset: fonts/MedusaIcons.ttf
 flutter_launcher_icons:
-  remove_alpha_ios: true
   android: true
   ios: true
+  remove_alpha_ios: true
   image_path: "assets/images/square_logo.png"
+  min_sdk_android: 21
+  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_foreground: "assets/images/square_logo.png"
+  adaptive_icon_monochrome: "assets/images/square_logo.png"

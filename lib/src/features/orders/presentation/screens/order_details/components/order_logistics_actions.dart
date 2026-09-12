@@ -31,7 +31,8 @@ class OrderLogisticsActions extends StatelessWidget {
         children: [
           // Header banner
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 10.0),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 14.0, vertical: 10.0),
             decoration: BoxDecoration(
               color: const Color(0xFFE48629).withValues(alpha: 0.08),
               borderRadius: const BorderRadius.only(
@@ -44,7 +45,8 @@ class OrderLogisticsActions extends StatelessWidget {
                 const CircleAvatar(
                   radius: 14,
                   backgroundColor: Color(0xFFE48629),
-                  child: Icon(Icons.local_shipping, size: 16, color: Colors.white),
+                  child:
+                      Icon(Icons.local_shipping, size: 16, color: Colors.white),
                 ),
                 const Gap(10),
                 Expanded(
@@ -69,7 +71,8 @@ class OrderLogisticsActions extends StatelessWidget {
                   ),
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
                     color: const Color(0xFF1B3A0A).withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(12),
@@ -98,20 +101,34 @@ class OrderLogisticsActions extends StatelessWidget {
                       child: OutlinedButton.icon(
                         style: OutlinedButton.styleFrom(
                           foregroundColor: const Color(0xFF1B3A0A),
-                          side: const BorderSide(color: Color(0xFF1B3A0A), width: 1.2),
+                          side: const BorderSide(
+                              color: Color(0xFF1B3A0A), width: 1.2),
                           padding: const EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10)),
                         ),
-                        onPressed: () {
-                          context.pushRoute(
+                        onPressed: () async {
+                          final res = await context.pushRoute(
                             AddUpdatePickupRequestRoute(
                               preselectedOrderId: order.id,
                               preselectedRegionId: regionId,
+                              preselectedOrder: order,
                             ),
                           );
+                          if (res == true && context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                    'Pickup request created & order fulfillment initiated!'),
+                                backgroundColor: Color(0xFF1B3A0A),
+                              ),
+                            );
+                          }
                         },
                         icon: const Icon(Icons.storefront_outlined, size: 18),
-                        label: const Text('Request Pickup', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                        label: const Text('Request Pickup',
+                            style: TextStyle(
+                                fontWeight: FontWeight.bold, fontSize: 13)),
                       ),
                     ),
                     const Gap(10),
@@ -122,19 +139,31 @@ class OrderLogisticsActions extends StatelessWidget {
                         style: FilledButton.styleFrom(
                           backgroundColor: const Color(0xFFE48629),
                           padding: const EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10)),
                         ),
-                        onPressed: () {
-                          context.pushRoute(
+                        onPressed: () async {
+                          final res = await context.pushRoute(
                             AddUpdateDeliveryRoute(
                               preselectedOrderId: order.id,
                               preselectedRegionId: regionId,
                               preselectedOrder: order,
                             ),
                           );
+                          if (res == true && context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                    'Delivery dispatched & order fulfillment initiated!'),
+                                backgroundColor: Color(0xFFE48629),
+                              ),
+                            );
+                          }
                         },
                         icon: const Icon(Icons.send_rounded, size: 18),
-                        label: const Text('Direct Dispatch', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                        label: const Text('Direct Dispatch',
+                            style: TextStyle(
+                                fontWeight: FontWeight.bold, fontSize: 13)),
                       ),
                     ),
                   ],
@@ -142,7 +171,8 @@ class OrderLogisticsActions extends StatelessWidget {
                 const Gap(8),
                 Text(
                   'Route package via collection station or dispatch directly to customer doorstep.',
-                  style: context.bodySmall?.copyWith(color: ColorManager.manatee, fontSize: 11),
+                  style: context.bodySmall
+                      ?.copyWith(color: ColorManager.manatee, fontSize: 11),
                   textAlign: TextAlign.center,
                 ),
               ],

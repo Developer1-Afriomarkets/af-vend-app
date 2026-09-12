@@ -58,8 +58,14 @@ class _PickupRequestsViewState extends State<PickupRequestsView> {
   Future<void> _fetchPickupRequests() async {
     setState(() => isLoading = true);
     try {
+      final orgId = AppScopeService.currentLogisticsOrgId;
+      final isLogistics = AppScopeService.isLogistics;
+      final pickupQuery = (isLogistics && orgId != null && orgId.isNotEmpty)
+          ? supabase.from('pickup_requests').select('*').eq('logistics_org_id', orgId).order('created_at', ascending: false)
+          : supabase.from('pickup_requests').select('*').order('created_at', ascending: false);
+
       final results = await Future.wait([
-        supabase.from('pickup_requests').select('*').order('created_at', ascending: false),
+        pickupQuery,
         supabase.from('region').select('id, name'),
         supabase.from('logistics_orgs').select('id, name'),
         supabase.from('collection_stations').select('id, name, address'),
@@ -110,7 +116,7 @@ class _PickupRequestsViewState extends State<PickupRequestsView> {
         // Vendor scope filter
         if (isVendorScope && myStoreOnly && currentUserId != null) {
           final reqVendor = req['vendor_id']?.toString();
-          if (reqVendor != null && reqVendor != currentUserId) {
+          if (reqVendor != currentUserId) {
             return false;
           }
         }
@@ -120,7 +126,7 @@ class _PickupRequestsViewState extends State<PickupRequestsView> {
           final orgId = AppScopeService.currentLogisticsOrgId;
           if (orgId != null && orgId.isNotEmpty) {
             final reqOrg = req['logistics_org_id']?.toString();
-            if (reqOrg != null && reqOrg.isNotEmpty && reqOrg != orgId) {
+            if (reqOrg != orgId) {
               return false;
             }
           }

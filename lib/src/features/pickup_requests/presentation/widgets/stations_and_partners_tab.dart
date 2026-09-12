@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:medusa_admin/src/core/extensions/context_extension.dart';
+import 'package:medusa_admin/src/core/services/app_scope_service.dart';
 
 class StationsAndPartnersTab extends StatefulWidget {
   const StationsAndPartnersTab({super.key});
@@ -22,6 +23,7 @@ class _StationsAndPartnersTabState extends State<StationsAndPartnersTab> {
   List<Map<String, dynamic>> _stations = [];
   List<Map<String, dynamic>> _partners = [];
   Map<String, String> _regionNames = {};
+  String? _selectedRegionId;
 
   @override
   void initState() {
@@ -90,6 +92,9 @@ class _StationsAndPartnersTabState extends State<StationsAndPartnersTab> {
     final isDark = context.isDark;
 
     final filteredStations = _stations.where((s) {
+      if (_selectedRegionId != null && s['region_id'] != _selectedRegionId) {
+        return false;
+      }
       if (_searchQuery.isEmpty) return true;
       final q = _searchQuery.toLowerCase();
       final name = (s['name'] ?? '').toString().toLowerCase();
@@ -99,6 +104,25 @@ class _StationsAndPartnersTabState extends State<StationsAndPartnersTab> {
     }).toList();
 
     final filteredPartners = _partners.where((p) {
+      if (_selectedRegionId != null) {
+        final regName = (_regionNames[_selectedRegionId] ?? '').toLowerCase();
+        final contact = p['contact_info'];
+        final pReg = (contact is Map ? (contact['region'] ?? '') : '').toString().toLowerCase();
+        final pName = (p['name'] ?? '').toString().toLowerCase();
+        if (regName.contains('naija') || regName.contains('nigeria')) {
+          if (!pReg.contains('lagos') && !pReg.contains('naija') && !pName.contains('naija') && !pName.contains('swift')) {
+            return false;
+          }
+        } else if (regName.contains('ghana')) {
+          if (!pReg.contains('accra') && !pReg.contains('ghana') && !pName.contains('ghana')) {
+            return false;
+          }
+        } else if (regName.contains('eu') || regName.contains('uk')) {
+          if (!pReg.contains('uk') && !pReg.contains('manchester') && !pName.contains('uk')) {
+            return false;
+          }
+        }
+      }
       if (_searchQuery.isEmpty) return true;
       final q = _searchQuery.toLowerCase();
       final name = (p['name'] ?? '').toString().toLowerCase();
@@ -214,6 +238,35 @@ class _StationsAndPartnersTabState extends State<StationsAndPartnersTab> {
             ),
           ),
           const Gap(12),
+
+          // Region Filter Chips
+          if (_regionNames.isNotEmpty) ...[
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  ChoiceChip(
+                    label: const Text('All Regions'),
+                    selected: _selectedRegionId == null,
+                    onSelected: (_) => setState(() => _selectedRegionId = null),
+                  ),
+                  const Gap(6),
+                  ..._regionNames.entries.map((entry) {
+                    final isSel = _selectedRegionId == entry.key;
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 6.0),
+                      child: ChoiceChip(
+                        label: Text(entry.value),
+                        selected: isSel,
+                        onSelected: (_) => setState(() => _selectedRegionId = isSel ? null : entry.key),
+                      ),
+                    );
+                  }),
+                ],
+              ),
+            ),
+            const Gap(10),
+          ],
 
           // Search Field
           TextField(
@@ -457,12 +510,36 @@ class _StationsAndPartnersTabState extends State<StationsAndPartnersTab> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        partner['name'] ?? 'Logistics Organization',
-                        style: GoogleFonts.comfortaa(
-                          fontSize: 15,
-                          fontWeight: FontWeight.bold,
-                        ),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              partner['name'] ?? 'Logistics Organization',
+                              style: GoogleFonts.comfortaa(
+                                fontSize: 15,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                          if (partner['id']?.toString() == AppScopeService.currentLogisticsOrgId) ...[
+                            const Gap(6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF1B3A0A),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: const Text(
+                                'YOUR HUB',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 9.5,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
                       const Gap(2),
                       Row(

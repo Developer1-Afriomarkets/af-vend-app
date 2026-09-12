@@ -56,8 +56,14 @@ class _DeliveriesViewState extends State<DeliveriesView> {
   Future<void> _fetchDeliveries() async {
     setState(() => isLoading = true);
     try {
+      final orgId = AppScopeService.currentLogisticsOrgId;
+      final isLogistics = AppScopeService.activeScope == AppScope.logistics;
+      final delQuery = (isLogistics && orgId != null && orgId.isNotEmpty)
+          ? supabase.from('deliveries').select('*').eq('logistics_org_id', orgId).order('created_at', ascending: false)
+          : supabase.from('deliveries').select('*').order('created_at', ascending: false);
+
       final results = await Future.wait([
-        supabase.from('deliveries').select('*').order('created_at', ascending: false),
+        delQuery,
         supabase.from('region').select('id, name'),
         supabase.from('collection_stations').select('id, name, address'),
         supabase.from('logistics_orgs').select('id, name'),
@@ -127,7 +133,7 @@ class _DeliveriesViewState extends State<DeliveriesView> {
         if (activeScope == AppScope.vendor) {
           if (filterByMyStore && myId != null) {
             final vendorId = del['vendor_id']?.toString();
-            if (vendorId != null && vendorId != myId) {
+            if (vendorId != myId) {
               return false;
             }
           }
@@ -135,7 +141,8 @@ class _DeliveriesViewState extends State<DeliveriesView> {
           if (filterMyOrgOnly) {
             final orgId = AppScopeService.currentLogisticsOrgId;
             final delOrgId = del['logistics_org_id']?.toString();
-            if (orgId != null && orgId.isNotEmpty && delOrgId != null && delOrgId.isNotEmpty) {
+            // A logistics org must strictly see only deliveries assigned to its organization
+            if (orgId != null && orgId.isNotEmpty) {
               if (delOrgId != orgId) {
                 return false;
               }
@@ -148,7 +155,7 @@ class _DeliveriesViewState extends State<DeliveriesView> {
             final myName = AppScopeService.displayName.toLowerCase();
             final isAssignedToMe = (driverId == myId) ||
                 (myName.isNotEmpty && driverName.isNotEmpty && (driverName == myName || driverName.contains(myName) || myName.contains(driverName)));
-            if (driverId != null && driverId.isNotEmpty && !isAssignedToMe) {
+            if (!isAssignedToMe) {
               return false;
             }
           }

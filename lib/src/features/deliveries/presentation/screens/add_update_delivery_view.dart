@@ -74,10 +74,22 @@ class _AddUpdateDeliveryViewState extends State<AddUpdateDeliveryView> {
   bool get isEdit => widget.delivery != null;
 
   final List<Map<String, dynamic>> vehicleOptions = [
-    {'type': 'bike', 'label': 'Motorcycle / Bike', 'icon': Icons.two_wheeler_rounded},
+    {
+      'type': 'bike',
+      'label': 'Motorcycle / Bike',
+      'icon': Icons.two_wheeler_rounded
+    },
     {'type': 'bicycle', 'label': 'Bicycle', 'icon': Icons.pedal_bike_rounded},
-    {'type': 'car', 'label': 'Car / Sedan', 'icon': Icons.directions_car_rounded},
-    {'type': 'van', 'label': 'Delivery Van', 'icon': Icons.airport_shuttle_rounded},
+    {
+      'type': 'car',
+      'label': 'Car / Sedan',
+      'icon': Icons.directions_car_rounded
+    },
+    {
+      'type': 'van',
+      'label': 'Delivery Van',
+      'icon': Icons.airport_shuttle_rounded
+    },
     {'type': 'truck', 'label': 'Truck', 'icon': Icons.local_shipping_rounded},
   ];
 
@@ -89,10 +101,14 @@ class _AddUpdateDeliveryViewState extends State<AddUpdateDeliveryView> {
       driverNameCtrl.text = del['driver_name']?.toString() ?? '';
       driverPhoneCtrl.text = del['driver_phone']?.toString() ?? '';
       vehiclePlateCtrl.text = del['vehicle_vin_or_plate']?.toString() ?? '';
-      destinationAddressCtrl.text = del['dest_pickup_station_address']?.toString() ?? '';
-      selectedDeliveryMode = del['delivery_mode']?.toString().toLowerCase() ?? 'doorstep';
-      selectedRouteCategory = del['route_category']?.toString().toLowerCase() ?? 'intra_state';
-      selectedVehicleType = del['vehicle_type']?.toString().toLowerCase() ?? 'bike';
+      destinationAddressCtrl.text =
+          del['dest_pickup_station_address']?.toString() ?? '';
+      selectedDeliveryMode =
+          del['delivery_mode']?.toString().toLowerCase() ?? 'doorstep';
+      selectedRouteCategory =
+          del['route_category']?.toString().toLowerCase() ?? 'intra_state';
+      selectedVehicleType =
+          del['vehicle_type']?.toString().toLowerCase() ?? 'bike';
       selectedRegionId = del['region_id']?.toString();
       selectedLogisticsOrgId = del['logistics_org_id']?.toString();
       selectedOriginStationId = del['origin_collection_station_id']?.toString();
@@ -104,7 +120,8 @@ class _AddUpdateDeliveryViewState extends State<AddUpdateDeliveryView> {
         customerNameCtrl.text = rawMeta['customer_name']?.toString() ?? '';
         customerPhoneCtrl.text = rawMeta['customer_phone']?.toString() ?? '';
       } else {
-        isIndependentDelivery = (selectedLogisticsOrgId == null || selectedLogisticsOrgId!.isEmpty);
+        isIndependentDelivery =
+            (selectedLogisticsOrgId == null || selectedLogisticsOrgId!.isEmpty);
       }
 
       final rawVehicle = del['vehicle_name_make_model_color'];
@@ -168,7 +185,10 @@ class _AddUpdateDeliveryViewState extends State<AddUpdateDeliveryView> {
     if (customerNameCtrl.text.trim().isEmpty && custName != 'N/A') {
       customerNameCtrl.text = custName;
     }
-    final rawPhone = (ord.metadata?['shipping_address'] as Map?)?['phone']?.toString() ?? addr?.phone?.toString() ?? '';
+    final rawPhone =
+        (ord.metadata?['shipping_address'] as Map?)?['phone']?.toString() ??
+            addr?.phone?.toString() ??
+            '';
     if (customerPhoneCtrl.text.trim().isEmpty && rawPhone.isNotEmpty) {
       customerPhoneCtrl.text = rawPhone;
     }
@@ -251,7 +271,9 @@ class _AddUpdateDeliveryViewState extends State<AddUpdateDeliveryView> {
   Future<void> _fetchOrdersForRegion(String regionId) async {
     setState(() {
       isLoadingOrders = true;
-      if (!isEdit && widget.preselectedOrderId == null && primaryOrder == null) {
+      if (!isEdit &&
+          widget.preselectedOrderId == null &&
+          primaryOrder == null) {
         selectedOrderIds.clear();
       }
       availableOrders.clear();
@@ -264,13 +286,14 @@ class _AddUpdateDeliveryViewState extends State<AddUpdateDeliveryView> {
       };
 
       final currentStore = AppScopeService.currentStoreId;
-      if (AppScopeService.activeScope == AppScope.vendor && currentStore != null) {
+      if (AppScopeService.activeScope == AppScope.vendor &&
+          currentStore != null) {
         queryParams['store_id'] = currentStore;
       }
 
       final response = await getIt<MedusaAdminV2>().orders.list(
-        queryParameters: queryParams,
-      );
+            queryParameters: queryParams,
+          );
 
       if (mounted) {
         final rawOrders = response.orders;
@@ -286,12 +309,17 @@ class _AddUpdateDeliveryViewState extends State<AddUpdateDeliveryView> {
             return false;
           }
           // Exclude fulfilled / shipped
-          if (o.fulfillmentStatus == FulfillmentStatus.fulfilled || o.fulfillmentStatus == FulfillmentStatus.shipped) {
+          if (o.fulfillmentStatus == FulfillmentStatus.fulfilled ||
+              o.fulfillmentStatus == FulfillmentStatus.shipped) {
             return false;
           }
           // If in vendor scope, check store_id
-          if (AppScopeService.activeScope == AppScope.vendor && currentStore != null) {
-            final orderStoreId = o.metadata?['store_id']?.toString() ?? (o.metadata?['store'] is Map ? o.metadata!['store']['id']?.toString() : null);
+          if (AppScopeService.activeScope == AppScope.vendor &&
+              currentStore != null) {
+            final orderStoreId = o.metadata?['store_id']?.toString() ??
+                (o.metadata?['store'] is Map
+                    ? o.metadata!['store']['id']?.toString()
+                    : null);
             if (orderStoreId != null && orderStoreId != currentStore) {
               return false;
             }
@@ -322,44 +350,58 @@ class _AddUpdateDeliveryViewState extends State<AddUpdateDeliveryView> {
     if (!formKey.currentState!.validate()) return;
     if (selectedOrderIds.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select at least one order to dispatch.')),
+        const SnackBar(
+            content: Text('Please select at least one order to dispatch.')),
       );
       return;
     }
 
     setState(() => isSaving = true);
     try {
-      final vendorId = _resolveCurrentVendorId() ?? 'usr_01J16HCWG0BRX883SXYFKFHJ81';
+      final vendorId =
+          _resolveCurrentVendorId() ?? 'usr_01J16HCWG0BRX883SXYFKFHJ81';
 
       final payload = <String, dynamic>{
         'region_id': selectedRegionId,
         'logistics_org_id': isIndependentDelivery
             ? null
-            : (selectedLogisticsOrgId != null ? int.tryParse(selectedLogisticsOrgId!) : null),
+            : (selectedLogisticsOrgId != null
+                ? int.tryParse(selectedLogisticsOrgId!)
+                : null),
         'origin_collection_station_id': isIndependentDelivery
             ? null
-            : (selectedOriginStationId != null ? int.tryParse(selectedOriginStationId!) : null),
-        'dest_collection_station_id': selectedDeliveryMode == 'pickup_station' && selectedDestStationId != null
-            ? int.tryParse(selectedDestStationId!)
-            : null,
-        'dest_pickup_station_address': destinationAddressCtrl.text.trim().isNotEmpty
-            ? destinationAddressCtrl.text.trim()
-            : null,
+            : (selectedOriginStationId != null
+                ? int.tryParse(selectedOriginStationId!)
+                : null),
+        'dest_collection_station_id':
+            selectedDeliveryMode == 'pickup_station' &&
+                    selectedDestStationId != null
+                ? int.tryParse(selectedDestStationId!)
+                : null,
+        'dest_pickup_station_address':
+            destinationAddressCtrl.text.trim().isNotEmpty
+                ? destinationAddressCtrl.text.trim()
+                : null,
         'order_ids': selectedOrderIds,
         'delivery_mode': selectedDeliveryMode,
         'route_category': selectedRouteCategory,
         'vehicle_type': selectedVehicleType,
         'vehicle_vin_or_plate': vehiclePlateCtrl.text.trim(),
-        'vehicle_name_make_model_color': vehicleMakeCtrl.text.trim().isNotEmpty ? [vehicleMakeCtrl.text.trim()] : [],
+        'vehicle_name_make_model_color': vehicleMakeCtrl.text.trim().isNotEmpty
+            ? [vehicleMakeCtrl.text.trim()]
+            : [],
         'driver_name': driverNameCtrl.text.trim(),
         'driver_phone': driverPhoneCtrl.text.trim(),
         'vendor_id': vendorId,
         'updated_at': DateTime.now().toIso8601String(),
         'metadata': {
-          'fulfillment_type': isIndependentDelivery ? 'in_house' : 'third_party',
+          'fulfillment_type':
+              isIndependentDelivery ? 'in_house' : 'third_party',
           'merchant_store_name': AppScopeService.displayName,
-          if (customerNameCtrl.text.trim().isNotEmpty) 'customer_name': customerNameCtrl.text.trim(),
-          if (customerPhoneCtrl.text.trim().isNotEmpty) 'customer_phone': customerPhoneCtrl.text.trim(),
+          if (customerNameCtrl.text.trim().isNotEmpty)
+            'customer_name': customerNameCtrl.text.trim(),
+          if (customerPhoneCtrl.text.trim().isNotEmpty)
+            'customer_phone': customerPhoneCtrl.text.trim(),
           if (primaryOrder != null) ...{
             'primary_order_id': primaryOrder!.id,
             'primary_order_display_id': primaryOrder!.displayId,
@@ -406,7 +448,8 @@ class _AddUpdateDeliveryViewState extends State<AddUpdateDeliveryView> {
     final isDark = context.isDark;
     final border = OutlineInputBorder(
       borderRadius: const BorderRadius.all(Radius.circular(12.0)),
-      borderSide: BorderSide(color: isDark ? Colors.white12 : Colors.grey.shade300),
+      borderSide:
+          BorderSide(color: isDark ? Colors.white12 : Colors.grey.shade300),
     );
 
     return Scaffold(
@@ -420,7 +463,10 @@ class _AddUpdateDeliveryViewState extends State<AddUpdateDeliveryView> {
           TextButton.icon(
             onPressed: isSaving ? null : _save,
             icon: isSaving
-                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator.adaptive(strokeWidth: 2))
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator.adaptive(strokeWidth: 2))
                 : const Icon(Icons.check, color: Color(0xFFE48629)),
             label: Text(
               'Save',
@@ -484,14 +530,18 @@ class _AddUpdateDeliveryViewState extends State<AddUpdateDeliveryView> {
         elevation: 0,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
-          side: BorderSide(color: const Color(0xFFE48629).withValues(alpha: 0.3)),
+          side:
+              BorderSide(color: const Color(0xFFE48629).withValues(alpha: 0.3)),
         ),
         child: const Padding(
           padding: EdgeInsets.all(20.0),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              SizedBox(width: 18, height: 18, child: CircularProgressIndicator.adaptive(strokeWidth: 2)),
+              SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator.adaptive(strokeWidth: 2)),
               Gap(12),
               Text('Loading order details...'),
             ],
@@ -501,7 +551,9 @@ class _AddUpdateDeliveryViewState extends State<AddUpdateDeliveryView> {
     }
 
     final ord = primaryOrder;
-    final orderNum = ord?.displayId != null ? '#${ord!.displayId}' : (widget.preselectedOrderId ?? 'Order');
+    final orderNum = ord?.displayId != null
+        ? '#${ord!.displayId}'
+        : (widget.preselectedOrderId ?? 'Order');
     final customerName = customerNameCtrl.text.isNotEmpty
         ? customerNameCtrl.text
         : (ord?.customerName ?? 'Customer');
@@ -542,7 +594,8 @@ class _AddUpdateDeliveryViewState extends State<AddUpdateDeliveryView> {
                       const CircleAvatar(
                         radius: 12,
                         backgroundColor: Color(0xFF1B3A0A),
-                        child: Icon(Icons.shopping_bag_outlined, size: 14, color: Colors.white),
+                        child: Icon(Icons.shopping_bag_outlined,
+                            size: 14, color: Colors.white),
                       ),
                       const Gap(8),
                       Expanded(
@@ -564,7 +617,8 @@ class _AddUpdateDeliveryViewState extends State<AddUpdateDeliveryView> {
                 ),
                 const Gap(8),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
                     color: const Color(0xFFE48629).withValues(alpha: 0.2),
                     borderRadius: BorderRadius.circular(8),
@@ -591,15 +645,19 @@ class _AddUpdateDeliveryViewState extends State<AddUpdateDeliveryView> {
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Icon(Icons.person_outline_rounded, size: 18, color: Color(0xFF1B3A0A)),
+                    const Icon(Icons.person_outline_rounded,
+                        size: 18, color: Color(0xFF1B3A0A)),
                     const Gap(8),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            customerName.isNotEmpty && customerName != 'N/A' ? customerName : 'Customer',
-                            style: context.bodyMedium?.copyWith(fontWeight: FontWeight.bold),
+                            customerName.isNotEmpty && customerName != 'N/A'
+                                ? customerName
+                                : 'Customer',
+                            style: context.bodyMedium
+                                ?.copyWith(fontWeight: FontWeight.bold),
                           ),
                           if (customerPhone.isNotEmpty) ...[
                             const Gap(2),
@@ -607,17 +665,22 @@ class _AddUpdateDeliveryViewState extends State<AddUpdateDeliveryView> {
                               children: [
                                 Text(
                                   customerPhone,
-                                  style: context.bodySmall?.copyWith(color: Colors.grey.shade600),
+                                  style: context.bodySmall
+                                      ?.copyWith(color: Colors.grey.shade600),
                                 ),
                                 const Gap(8),
                                 InkWell(
                                   onTap: () {
-                                    Clipboard.setData(ClipboardData(text: customerPhone));
+                                    Clipboard.setData(
+                                        ClipboardData(text: customerPhone));
                                     ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(content: Text('Customer phone copied to clipboard')),
+                                      const SnackBar(
+                                          content: Text(
+                                              'Customer phone copied to clipboard')),
                                     );
                                   },
-                                  child: const Icon(Icons.copy_rounded, size: 14, color: Color(0xFFE48629)),
+                                  child: const Icon(Icons.copy_rounded,
+                                      size: 14, color: Color(0xFFE48629)),
                                 ),
                               ],
                             ),
@@ -631,11 +694,14 @@ class _AddUpdateDeliveryViewState extends State<AddUpdateDeliveryView> {
                         children: [
                           Text(
                             totalFormatted,
-                            style: context.bodyMedium?.copyWith(fontWeight: FontWeight.bold, color: const Color(0xFF1B3A0A)),
+                            style: context.bodyMedium?.copyWith(
+                                fontWeight: FontWeight.bold,
+                                color: const Color(0xFF1B3A0A)),
                           ),
                           Text(
                             '$itemsCount item${itemsCount == 1 ? '' : 's'}',
-                            style: context.bodySmall?.copyWith(color: Colors.grey.shade600, fontSize: 11),
+                            style: context.bodySmall?.copyWith(
+                                color: Colors.grey.shade600, fontSize: 11),
                           ),
                         ],
                       ),
@@ -650,7 +716,8 @@ class _AddUpdateDeliveryViewState extends State<AddUpdateDeliveryView> {
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Icon(Icons.location_on_outlined, size: 18, color: Color(0xFFE48629)),
+                    const Icon(Icons.location_on_outlined,
+                        size: 18, color: Color(0xFFE48629)),
                     const Gap(8),
                     Expanded(
                       child: Column(
@@ -658,14 +725,16 @@ class _AddUpdateDeliveryViewState extends State<AddUpdateDeliveryView> {
                         children: [
                           Text(
                             'Delivery Destination (Customer Doorstep)',
-                            style: context.bodySmall?.copyWith(color: Colors.grey.shade600, fontSize: 11),
+                            style: context.bodySmall?.copyWith(
+                                color: Colors.grey.shade600, fontSize: 11),
                           ),
                           const Gap(2),
                           Text(
                             destinationAddressCtrl.text.isNotEmpty
                                 ? destinationAddressCtrl.text
                                 : 'Address from order shipping details',
-                            style: context.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                            style: context.bodyMedium
+                                ?.copyWith(fontWeight: FontWeight.w600),
                           ),
                         ],
                       ),
@@ -694,9 +763,12 @@ class _AddUpdateDeliveryViewState extends State<AddUpdateDeliveryView> {
           children: [
             Row(
               children: [
-                const Icon(Icons.handshake_outlined, size: 20, color: Color(0xFF1B3A0A)),
+                const Icon(Icons.handshake_outlined,
+                    size: 20, color: Color(0xFF1B3A0A)),
                 const Gap(8),
-                Text('Delivery Fulfillment Model', style: context.bodyLarge?.copyWith(fontWeight: FontWeight.bold)),
+                Text('Delivery Fulfillment Model',
+                    style: context.bodyLarge
+                        ?.copyWith(fontWeight: FontWeight.bold)),
               ],
             ),
             const Gap(12),
@@ -721,10 +793,14 @@ class _AddUpdateDeliveryViewState extends State<AddUpdateDeliveryView> {
                       decoration: BoxDecoration(
                         color: isIndependentDelivery
                             ? const Color(0xFF1B3A0A).withValues(alpha: 0.08)
-                            : (isDark ? Colors.white.withValues(alpha: 0.04) : Colors.grey.shade50),
+                            : (isDark
+                                ? Colors.white.withValues(alpha: 0.04)
+                                : Colors.grey.shade50),
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                          color: isIndependentDelivery ? const Color(0xFF1B3A0A) : Colors.grey.shade300,
+                          color: isIndependentDelivery
+                              ? const Color(0xFF1B3A0A)
+                              : Colors.grey.shade300,
                           width: isIndependentDelivery ? 1.8 : 1,
                         ),
                       ),
@@ -736,11 +812,14 @@ class _AddUpdateDeliveryViewState extends State<AddUpdateDeliveryView> {
                             children: [
                               Icon(
                                 Icons.storefront_rounded,
-                                color: isIndependentDelivery ? const Color(0xFF1B3A0A) : Colors.grey,
+                                color: isIndependentDelivery
+                                    ? const Color(0xFF1B3A0A)
+                                    : Colors.grey,
                                 size: 22,
                               ),
                               if (isIndependentDelivery)
-                                const Icon(Icons.check_circle, color: Color(0xFF1B3A0A), size: 18),
+                                const Icon(Icons.check_circle,
+                                    color: Color(0xFF1B3A0A), size: 18),
                             ],
                           ),
                           const Gap(8),
@@ -749,13 +828,16 @@ class _AddUpdateDeliveryViewState extends State<AddUpdateDeliveryView> {
                             style: TextStyle(
                               fontWeight: FontWeight.bold,
                               fontSize: 13,
-                              color: isIndependentDelivery ? const Color(0xFF1B3A0A) : null,
+                              color: isIndependentDelivery
+                                  ? const Color(0xFF1B3A0A)
+                                  : null,
                             ),
                           ),
                           const Gap(2),
                           Text(
                             'Your own store rider / staff',
-                            style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                            style: TextStyle(
+                                fontSize: 11, color: Colors.grey.shade600),
                           ),
                         ],
                       ),
@@ -779,10 +861,14 @@ class _AddUpdateDeliveryViewState extends State<AddUpdateDeliveryView> {
                       decoration: BoxDecoration(
                         color: !isIndependentDelivery
                             ? const Color(0xFFE48629).withValues(alpha: 0.08)
-                            : (isDark ? Colors.white.withValues(alpha: 0.04) : Colors.grey.shade50),
+                            : (isDark
+                                ? Colors.white.withValues(alpha: 0.04)
+                                : Colors.grey.shade50),
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                          color: !isIndependentDelivery ? const Color(0xFFE48629) : Colors.grey.shade300,
+                          color: !isIndependentDelivery
+                              ? const Color(0xFFE48629)
+                              : Colors.grey.shade300,
                           width: !isIndependentDelivery ? 1.8 : 1,
                         ),
                       ),
@@ -794,11 +880,14 @@ class _AddUpdateDeliveryViewState extends State<AddUpdateDeliveryView> {
                             children: [
                               Icon(
                                 Icons.local_shipping_rounded,
-                                color: !isIndependentDelivery ? const Color(0xFFE48629) : Colors.grey,
+                                color: !isIndependentDelivery
+                                    ? const Color(0xFFE48629)
+                                    : Colors.grey,
                                 size: 22,
                               ),
                               if (!isIndependentDelivery)
-                                const Icon(Icons.check_circle, color: Color(0xFFE48629), size: 18),
+                                const Icon(Icons.check_circle,
+                                    color: Color(0xFFE48629), size: 18),
                             ],
                           ),
                           const Gap(8),
@@ -807,13 +896,16 @@ class _AddUpdateDeliveryViewState extends State<AddUpdateDeliveryView> {
                             style: TextStyle(
                               fontWeight: FontWeight.bold,
                               fontSize: 13,
-                              color: !isIndependentDelivery ? const Color(0xFFE48629) : null,
+                              color: !isIndependentDelivery
+                                  ? const Color(0xFFE48629)
+                                  : null,
                             ),
                           ),
                           const Gap(2),
                           Text(
                             'Logistics partner firm (SwiftAir, etc.)',
-                            style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                            style: TextStyle(
+                                fontSize: 11, color: Colors.grey.shade600),
                           ),
                         ],
                       ),
@@ -829,7 +921,9 @@ class _AddUpdateDeliveryViewState extends State<AddUpdateDeliveryView> {
   }
 
   Widget _buildRoutingCard(bool isDark, OutlineInputBorder border) {
-    final storeName = AppScopeService.displayName.isNotEmpty ? AppScopeService.displayName : 'Your Store';
+    final storeName = AppScopeService.displayName.isNotEmpty
+        ? AppScopeService.displayName
+        : 'Your Store';
 
     return Card(
       elevation: 0,
@@ -844,9 +938,12 @@ class _AddUpdateDeliveryViewState extends State<AddUpdateDeliveryView> {
           children: [
             Row(
               children: [
-                const Icon(Icons.route_rounded, size: 20, color: Color(0xFF1B3A0A)),
+                const Icon(Icons.route_rounded,
+                    size: 20, color: Color(0xFF1B3A0A)),
                 const Gap(8),
-                Text('Route & Destination', style: context.bodyLarge?.copyWith(fontWeight: FontWeight.bold)),
+                Text('Route & Destination',
+                    style: context.bodyLarge
+                        ?.copyWith(fontWeight: FontWeight.bold)),
               ],
             ),
             const Gap(14),
@@ -856,7 +953,8 @@ class _AddUpdateDeliveryViewState extends State<AddUpdateDeliveryView> {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.03),
+                  color: (isDark ? Colors.white : Colors.black)
+                      .withValues(alpha: 0.03),
                   borderRadius: BorderRadius.circular(10),
                   border: Border.all(color: Colors.grey.shade300),
                 ),
@@ -868,10 +966,13 @@ class _AddUpdateDeliveryViewState extends State<AddUpdateDeliveryView> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text('Dispatch Origin', style: TextStyle(fontSize: 11, color: Colors.grey)),
+                          const Text('Dispatch Origin',
+                              style:
+                                  TextStyle(fontSize: 11, color: Colors.grey)),
                           Text(
                             '$storeName (Merchant Warehouse / Shop)',
-                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                            style: const TextStyle(
+                                fontWeight: FontWeight.bold, fontSize: 13),
                           ),
                         ],
                       ),
@@ -883,7 +984,9 @@ class _AddUpdateDeliveryViewState extends State<AddUpdateDeliveryView> {
             ],
 
             // Region Dropdown
-            Text('Region', style: context.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
+            Text('Region',
+                style:
+                    context.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
             const Gap(6),
             isLoadingRegions
                 ? const Center(child: CircularProgressIndicator.adaptive())
@@ -894,11 +997,13 @@ class _AddUpdateDeliveryViewState extends State<AddUpdateDeliveryView> {
                       enabledBorder: border,
                       border: border,
                       prefixIcon: const Icon(CupertinoIcons.globe),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 12),
                     ),
-                    validator: (val) => val == null ? 'Region is required' : null,
+                    validator: (val) =>
+                        val == null ? 'Region is required' : null,
                     hint: const Text('Select Region'),
-                    initialValue: selectedRegionId,
+                    value: selectedRegionId,
                     items: regions.map((reg) {
                       return DropdownMenuItem<String>(
                         value: reg['id']?.toString(),
@@ -919,7 +1024,9 @@ class _AddUpdateDeliveryViewState extends State<AddUpdateDeliveryView> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Route Scope', style: context.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
+                      Text('Route Scope',
+                          style: context.bodyMedium
+                              ?.copyWith(fontWeight: FontWeight.w600)),
                       const Gap(6),
                       DropdownButtonFormField<String>(
                         isExpanded: true,
@@ -927,25 +1034,30 @@ class _AddUpdateDeliveryViewState extends State<AddUpdateDeliveryView> {
                         decoration: InputDecoration(
                           enabledBorder: border,
                           border: border,
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+                          contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 12),
                         ),
                         initialValue: selectedRouteCategory,
                         items: const [
                           DropdownMenuItem(
                             value: 'intra_state',
-                            child: Text('Intra-State', overflow: TextOverflow.ellipsis),
+                            child: Text('Intra-State',
+                                overflow: TextOverflow.ellipsis),
                           ),
                           DropdownMenuItem(
                             value: 'inter_state',
-                            child: Text('Inter-State', overflow: TextOverflow.ellipsis),
+                            child: Text('Inter-State',
+                                overflow: TextOverflow.ellipsis),
                           ),
                           DropdownMenuItem(
                             value: 'international',
-                            child: Text('International', overflow: TextOverflow.ellipsis),
+                            child: Text('International',
+                                overflow: TextOverflow.ellipsis),
                           ),
                         ],
                         onChanged: (val) {
-                          if (val != null) setState(() => selectedRouteCategory = val);
+                          if (val != null)
+                            setState(() => selectedRouteCategory = val);
                         },
                       ),
                     ],
@@ -956,7 +1068,9 @@ class _AddUpdateDeliveryViewState extends State<AddUpdateDeliveryView> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Delivery Mode', style: context.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
+                      Text('Delivery Mode',
+                          style: context.bodyMedium
+                              ?.copyWith(fontWeight: FontWeight.w600)),
                       const Gap(6),
                       DropdownButtonFormField<String>(
                         isExpanded: true,
@@ -964,21 +1078,25 @@ class _AddUpdateDeliveryViewState extends State<AddUpdateDeliveryView> {
                         decoration: InputDecoration(
                           enabledBorder: border,
                           border: border,
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+                          contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 12),
                         ),
                         initialValue: selectedDeliveryMode,
                         items: const [
                           DropdownMenuItem(
                             value: 'doorstep',
-                            child: Text('Doorstep', overflow: TextOverflow.ellipsis),
+                            child: Text('Doorstep',
+                                overflow: TextOverflow.ellipsis),
                           ),
                           DropdownMenuItem(
                             value: 'pickup_station',
-                            child: Text('Station Pickup', overflow: TextOverflow.ellipsis),
+                            child: Text('Station Pickup',
+                                overflow: TextOverflow.ellipsis),
                           ),
                         ],
                         onChanged: (val) {
-                          if (val != null) setState(() => selectedDeliveryMode = val);
+                          if (val != null)
+                            setState(() => selectedDeliveryMode = val);
                         },
                       ),
                     ],
@@ -990,12 +1108,16 @@ class _AddUpdateDeliveryViewState extends State<AddUpdateDeliveryView> {
 
             // Customer Destination Address (Pre-filled from Order)
             if (selectedDeliveryMode == 'doorstep') ...[
-              Text('Customer Delivery Address / Landmarks', style: context.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
+              Text('Customer Delivery Address / Landmarks',
+                  style: context.bodyMedium
+                      ?.copyWith(fontWeight: FontWeight.w600)),
               const Gap(6),
               TextFormField(
                 controller: destinationAddressCtrl,
                 maxLines: 2,
-                validator: (val) => val == null || val.trim().isEmpty ? 'Destination delivery address is required' : null,
+                validator: (val) => val == null || val.trim().isEmpty
+                    ? 'Destination delivery address is required'
+                    : null,
                 decoration: InputDecoration(
                   hintText: 'e.g. 14 Admiralty Way, Lekki Phase 1, Lagos',
                   prefixIcon: const Icon(Icons.location_on_rounded),
@@ -1004,7 +1126,9 @@ class _AddUpdateDeliveryViewState extends State<AddUpdateDeliveryView> {
                 ),
               ),
             ] else ...[
-              Text('Destination Collection Station', style: context.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
+              Text('Destination Collection Station',
+                  style: context.bodyMedium
+                      ?.copyWith(fontWeight: FontWeight.w600)),
               const Gap(6),
               DropdownButtonFormField<String>(
                 isExpanded: true,
@@ -1013,14 +1137,16 @@ class _AddUpdateDeliveryViewState extends State<AddUpdateDeliveryView> {
                   enabledBorder: border,
                   border: border,
                   prefixIcon: const Icon(Icons.move_to_inbox_rounded),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 ),
                 hint: const Text('Select Destination Station'),
                 initialValue: selectedDestStationId,
                 items: collectionStations.map((station) {
                   return DropdownMenuItem<String>(
                     value: station['id']?.toString(),
-                    child: Text(station['name']?.toString() ?? 'Station #${station['id']}'),
+                    child: Text(station['name']?.toString() ??
+                        'Station #${station['id']}'),
                   );
                 }).toList(),
                 onChanged: (val) => setState(() => selectedDestStationId = val),
@@ -1046,14 +1172,18 @@ class _AddUpdateDeliveryViewState extends State<AddUpdateDeliveryView> {
           children: [
             Row(
               children: [
-                const Icon(Icons.business_center_rounded, size: 20, color: Color(0xFFE48629)),
+                const Icon(Icons.business_center_rounded,
+                    size: 20, color: Color(0xFFE48629)),
                 const Gap(8),
-                Text('Logistics Fleet Partner', style: context.bodyLarge?.copyWith(fontWeight: FontWeight.bold)),
+                Text('Logistics Fleet Partner',
+                    style: context.bodyLarge
+                        ?.copyWith(fontWeight: FontWeight.bold)),
               ],
             ),
             const Gap(14),
-
-            Text('Logistics Organization', style: context.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
+            Text('Logistics Organization',
+                style:
+                    context.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
             const Gap(6),
             isLoadingLogistics
                 ? const Center(child: CircularProgressIndicator.adaptive())
@@ -1064,21 +1194,25 @@ class _AddUpdateDeliveryViewState extends State<AddUpdateDeliveryView> {
                       enabledBorder: border,
                       border: border,
                       prefixIcon: const Icon(CupertinoIcons.building_2_fill),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 12),
                     ),
                     hint: const Text('Select Partner Organization'),
                     initialValue: selectedLogisticsOrgId,
                     items: logisticsOrgs.map((org) {
                       return DropdownMenuItem<String>(
                         value: org['id']?.toString(),
-                        child: Text(org['name']?.toString() ?? 'Partner #${org['id']}'),
+                        child: Text(
+                            org['name']?.toString() ?? 'Partner #${org['id']}'),
                       );
                     }).toList(),
-                    onChanged: (val) => setState(() => selectedLogisticsOrgId = val),
+                    onChanged: (val) =>
+                        setState(() => selectedLogisticsOrgId = val),
                   ),
             const Gap(14),
-
-            Text('Origin Hub Station (Optional)', style: context.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
+            Text('Origin Hub Station (Optional)',
+                style:
+                    context.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
             const Gap(6),
             DropdownButtonFormField<String>(
               isExpanded: true,
@@ -1087,14 +1221,17 @@ class _AddUpdateDeliveryViewState extends State<AddUpdateDeliveryView> {
                 enabledBorder: border,
                 border: border,
                 prefixIcon: const Icon(Icons.outbox_rounded),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               ),
-              hint: const Text('Select Origin Station (or direct vendor pickup)'),
+              hint:
+                  const Text('Select Origin Station (or direct vendor pickup)'),
               initialValue: selectedOriginStationId,
               items: collectionStations.map((station) {
                 return DropdownMenuItem<String>(
                   value: station['id']?.toString(),
-                  child: Text(station['name']?.toString() ?? 'Station #${station['id']}'),
+                  child: Text(station['name']?.toString() ??
+                      'Station #${station['id']}'),
                 );
               }).toList(),
               onChanged: (val) => setState(() => selectedOriginStationId = val),
@@ -1120,21 +1257,30 @@ class _AddUpdateDeliveryViewState extends State<AddUpdateDeliveryView> {
             Row(
               children: [
                 Icon(
-                  isIndependentDelivery ? Icons.two_wheeler_rounded : Icons.badge_rounded,
+                  isIndependentDelivery
+                      ? Icons.two_wheeler_rounded
+                      : Icons.badge_rounded,
                   size: 20,
-                  color: isIndependentDelivery ? const Color(0xFF1B3A0A) : const Color(0xFF2563EB),
+                  color: isIndependentDelivery
+                      ? const Color(0xFF1B3A0A)
+                      : const Color(0xFF2563EB),
                 ),
                 const Gap(8),
                 Text(
-                  isIndependentDelivery ? 'In-House Rider & Vehicle' : 'Driver & Vehicle Assignment',
-                  style: context.bodyLarge?.copyWith(fontWeight: FontWeight.bold),
+                  isIndependentDelivery
+                      ? 'In-House Rider & Vehicle'
+                      : 'Driver & Vehicle Assignment',
+                  style:
+                      context.bodyLarge?.copyWith(fontWeight: FontWeight.bold),
                 ),
               ],
             ),
             const Gap(14),
 
             // Vehicle Type Selector Chips
-            Text('Vehicle Type', style: context.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
+            Text('Vehicle Type',
+                style:
+                    context.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
             const Gap(8),
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,
@@ -1144,13 +1290,21 @@ class _AddUpdateDeliveryViewState extends State<AddUpdateDeliveryView> {
                   return Padding(
                     padding: const EdgeInsets.only(right: 8.0),
                     child: ChoiceChip(
-                      avatar: Icon(v['icon'] as IconData, size: 16, color: isSelected ? Colors.white : Colors.grey),
-                      label: Text(v['label'] as String, style: const TextStyle(fontSize: 12)),
+                      avatar: Icon(v['icon'] as IconData,
+                          size: 16,
+                          color: isSelected ? Colors.white : Colors.grey),
+                      label: Text(v['label'] as String,
+                          style: const TextStyle(fontSize: 12)),
                       selected: isSelected,
                       selectedColor: const Color(0xFF1B3A0A),
-                      labelStyle: TextStyle(color: isSelected ? Colors.white : (isDark ? Colors.white70 : Colors.black87)),
+                      labelStyle: TextStyle(
+                          color: isSelected
+                              ? Colors.white
+                              : (isDark ? Colors.white70 : Colors.black87)),
                       onSelected: (val) {
-                        if (val) setState(() => selectedVehicleType = v['type'] as String);
+                        if (val)
+                          setState(
+                              () => selectedVehicleType = v['type'] as String);
                       },
                     ),
                   );
@@ -1165,8 +1319,11 @@ class _AddUpdateDeliveryViewState extends State<AddUpdateDeliveryView> {
                   child: TextFormField(
                     controller: driverNameCtrl,
                     decoration: InputDecoration(
-                      labelText: isIndependentDelivery ? 'Rider / Driver Name' : 'Driver Full Name',
-                      hintText: isIndependentDelivery ? 'e.g. Musa / In-House' : null,
+                      labelText: isIndependentDelivery
+                          ? 'Rider / Driver Name'
+                          : 'Driver Full Name',
+                      hintText:
+                          isIndependentDelivery ? 'e.g. Musa / In-House' : null,
                       prefixIcon: const Icon(Icons.person_rounded),
                       enabledBorder: border,
                       border: border,
@@ -1226,7 +1383,8 @@ class _AddUpdateDeliveryViewState extends State<AddUpdateDeliveryView> {
   }
 
   Widget _buildOrderConsolidationCard(bool isDark) {
-    final isPrimaryMode = (primaryOrder != null || widget.preselectedOrderId != null);
+    final isPrimaryMode =
+        (primaryOrder != null || widget.preselectedOrderId != null);
 
     return Card(
       elevation: 0,
@@ -1247,8 +1405,11 @@ class _AddUpdateDeliveryViewState extends State<AddUpdateDeliveryView> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        isPrimaryMode ? 'Bundle Additional Orders (Optional)' : 'Orders to Dispatch (${selectedOrderIds.length})',
-                        style: context.bodyLarge?.copyWith(fontWeight: FontWeight.bold),
+                        isPrimaryMode
+                            ? 'Bundle Additional Orders (Optional)'
+                            : 'Orders to Dispatch (${selectedOrderIds.length})',
+                        style: context.bodyLarge
+                            ?.copyWith(fontWeight: FontWeight.bold),
                         overflow: TextOverflow.ellipsis,
                       ),
                       const Gap(2),
@@ -1256,7 +1417,8 @@ class _AddUpdateDeliveryViewState extends State<AddUpdateDeliveryView> {
                         isPrimaryMode
                             ? 'Bundle other pending orders in this region into this run'
                             : 'Select orders to include in this dispatch manifest',
-                        style: context.bodySmall?.copyWith(color: Colors.grey.shade600, fontSize: 11),
+                        style: context.bodySmall?.copyWith(
+                            color: Colors.grey.shade600, fontSize: 11),
                         overflow: TextOverflow.ellipsis,
                       ),
                     ],
@@ -1273,11 +1435,12 @@ class _AddUpdateDeliveryViewState extends State<AddUpdateDeliveryView> {
               ],
             ),
             const Gap(12),
-
             if (selectedRegionId == null)
               const Padding(
                 padding: EdgeInsets.all(12.0),
-                child: Text('Please select a region above to load pending orders.', style: TextStyle(color: Colors.grey)),
+                child: Text(
+                    'Please select a region above to load pending orders.',
+                    style: TextStyle(color: Colors.grey)),
               )
             else if (isLoadingOrders)
               const Center(
@@ -1291,14 +1454,16 @@ class _AddUpdateDeliveryViewState extends State<AddUpdateDeliveryView> {
                 padding: const EdgeInsets.all(12.0),
                 child: Row(
                   children: [
-                    const Icon(Icons.info_outline, size: 16, color: Colors.grey),
+                    const Icon(Icons.info_outline,
+                        size: 16, color: Colors.grey),
                     const Gap(8),
                     Expanded(
                       child: Text(
                         isPrimaryMode
                             ? 'No additional pending orders in this region.'
                             : 'No pending orders ready for dispatch in this region.',
-                        style: const TextStyle(color: Colors.grey, fontSize: 13),
+                        style:
+                            const TextStyle(color: Colors.grey, fontSize: 13),
                       ),
                     ),
                   ],
@@ -1316,7 +1481,8 @@ class _AddUpdateDeliveryViewState extends State<AddUpdateDeliveryView> {
                   return CheckboxListTile(
                     value: isSelected,
                     activeColor: const Color(0xFFE48629),
-                    title: Text('Order #${order.displayId}', style: const TextStyle(fontWeight: FontWeight.bold)),
+                    title: Text('Order #${order.displayId}',
+                        style: const TextStyle(fontWeight: FontWeight.bold)),
                     subtitle: Text('Customer: $customer • Total: $total'),
                     onChanged: (checked) {
                       setState(() {
@@ -1326,7 +1492,8 @@ class _AddUpdateDeliveryViewState extends State<AddUpdateDeliveryView> {
                           }
                         } else {
                           // Prevent unchecking the primary order
-                          if (widget.preselectedOrderId != null && order.id == widget.preselectedOrderId) {
+                          if (widget.preselectedOrderId != null &&
+                              order.id == widget.preselectedOrderId) {
                             return;
                           }
                           selectedOrderIds.remove(order.id);

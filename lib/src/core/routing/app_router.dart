@@ -168,7 +168,6 @@ class AppRouter extends RootStackRouter {
         AutoRoute(page: SignupWizardRoute.page),
         AutoRoute(page: AccountUpdateWizardRoute.page),
         AutoRoute(page: LogisticsOnboardingWizardRoute.page),
-
       ]),
 
       AutoRoute(page: MainAppRoute.page, children: [
@@ -290,7 +289,6 @@ class AppRouter extends RootStackRouter {
         AutoRoute(page: StockLocationsRoute.page),
         AutoRoute(page: StockLocationDetailsRoute.page),
         AutoRoute(page: CreateUpdateStockLocationRoute.page),
-
 
         // App Settings
         AutoRoute(page: OrderSettingsRoute.page),
