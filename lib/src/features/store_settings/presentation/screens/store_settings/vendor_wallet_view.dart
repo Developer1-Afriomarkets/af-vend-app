@@ -156,7 +156,8 @@ class _VendorWalletViewState extends State<VendorWalletView> with SingleTickerPr
       final res = await dio.post('/admin/vendor/otp/send', data: {'purpose': purpose});
       dismissLoading();
       if (res.statusCode == 200) {
-        context.showSnackBar('Verification OTP dispatched to your registered contact.');
+        final msg = res.data['message']?.toString() ?? 'Verification OTP dispatched to your registered contact.';
+        context.showSnackBar(msg);
       }
     } catch (e) {
       dismissLoading();
@@ -176,31 +177,65 @@ class _VendorWalletViewState extends State<VendorWalletView> with SingleTickerPr
 
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Verify & Save Bank Account'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Bank: ${_selectedBankName ?? ''}'),
-            Text('Account Number: ${_accountNumberCtrl.text.trim()}'),
-            Text('Account Name: ${_resolvedAccountNameCtrl.text}'),
-            const Gap(16),
-            TextField(
-              controller: otpCtrl,
-              keyboardType: TextInputType.number,
-              decoration: InputDecoration(
-                labelText: 'Enter 6-Digit OTP',
-                hintText: '123456',
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+      builder: (ctx) => StatefulBuilder(
+        builder: (dialogCtx, setDialogState) => AlertDialog(
+          title: const Text('Verify & Save Bank Account'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Bank: ${_selectedBankName ?? ''}'),
+              Text('Account Number: ${_accountNumberCtrl.text.trim()}'),
+              Text('Account Name: ${_resolvedAccountNameCtrl.text}'),
+              const Gap(12),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1B3A0A).withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0xFF1B3A0A).withValues(alpha: 0.2)),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(Icons.mark_email_read_outlined, size: 16, color: Color(0xFF1B3A0A)),
+                    Gap(8),
+                    Expanded(
+                      child: Text(
+                        'A 6-digit code has been dispatched to your email and phone.',
+                        style: TextStyle(fontSize: 11, color: Color(0xFF1B3A0A), fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
+              const Gap(12),
+              TextField(
+                controller: otpCtrl,
+                keyboardType: TextInputType.number,
+                decoration: InputDecoration(
+                  labelText: 'Enter 6-Digit OTP',
+                  hintText: '123456',
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+              ),
+              const Gap(6),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton.icon(
+                  onPressed: () async {
+                    await _requestOtp('bank_account_update');
+                  },
+                  icon: const Icon(Icons.refresh, size: 14),
+                  label: const Text('Resend Code', style: TextStyle(fontSize: 12)),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.of(dialogCtx).pop(false), child: const Text('Cancel')),
+            ElevatedButton(onPressed: () => Navigator.of(dialogCtx).pop(true), child: const Text('Save Account')),
           ],
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancel')),
-          ElevatedButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Save Account')),
-        ],
       ),
     );
 
