@@ -691,6 +691,7 @@ class _AccountUpdateWizardViewState extends State<AccountUpdateWizardView> {
         const Gap(6),
         DropdownButtonFormField<String>(
           value: items.contains(value) ? value : items.first,
+          isExpanded: true,
           decoration: InputDecoration(
             prefixIcon: Icon(icon, size: 20),
             contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),

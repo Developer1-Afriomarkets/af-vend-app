@@ -402,16 +402,17 @@ class _LogisticsOrgSettingsViewState extends State<LogisticsOrgSettingsView> {
                     [
                       DropdownButtonFormField<String>(
                         initialValue: _selectedSla,
+                        isExpanded: true,
                         decoration: InputDecoration(
                           labelText: 'Guaranteed Delivery SLA',
                           prefixIcon: const Icon(LucideIcons.timer, size: 18, color: Color(0xFF059669)),
                           border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                         ),
                         items: const [
-                          DropdownMenuItem(value: 'same_day', child: Text('Same-Day Delivery Guarantee')),
-                          DropdownMenuItem(value: 'next_day', child: Text('Next-Day Standard Delivery')),
-                          DropdownMenuItem(value: 'express_3h', child: Text('Express 3-Hour Rapid Dispatch')),
-                          DropdownMenuItem(value: 'scheduled', child: Text('Scheduled Timed Drops')),
+                          DropdownMenuItem(value: 'same_day', child: Text('Same-Day Delivery Guarantee', overflow: TextOverflow.ellipsis)),
+                          DropdownMenuItem(value: 'next_day', child: Text('Next-Day Standard Delivery', overflow: TextOverflow.ellipsis)),
+                          DropdownMenuItem(value: 'express_3h', child: Text('Express 3-Hour Rapid Dispatch', overflow: TextOverflow.ellipsis)),
+                          DropdownMenuItem(value: 'scheduled', child: Text('Scheduled Timed Drops', overflow: TextOverflow.ellipsis)),
                         ],
                         onChanged: (val) {
                           if (val != null) setState(() => _selectedSla = val);

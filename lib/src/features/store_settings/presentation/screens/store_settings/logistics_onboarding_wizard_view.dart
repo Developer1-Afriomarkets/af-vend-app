@@ -483,16 +483,17 @@ class _LogisticsOnboardingWizardViewState extends State<LogisticsOnboardingWizar
         // 1. Operating Territory
         DropdownButtonFormField<String>(
           initialValue: _selectedRegionId,
+          isExpanded: true,
           decoration: InputDecoration(
             labelText: 'Operating Country / Primary Market *',
             prefixIcon: const Icon(Icons.public, color: Color(0xFF1B3A0A)),
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
           ),
           items: const [
-            DropdownMenuItem(value: 'reg_nigeria_central', child: Text('Nigeria (Lagos / Nationwide)')),
-            DropdownMenuItem(value: 'reg_ghana_central', child: Text('Ghana (Accra / Kumasi)')),
-            DropdownMenuItem(value: 'reg_uk_central', child: Text('United Kingdom (London / Manchester)')),
-            DropdownMenuItem(value: 'reg_kenya_central', child: Text('Kenya (Nairobi / Mombasa)')),
+            DropdownMenuItem(value: 'reg_nigeria_central', child: Text('Nigeria (Lagos / Nationwide)', overflow: TextOverflow.ellipsis)),
+            DropdownMenuItem(value: 'reg_ghana_central', child: Text('Ghana (Accra / Kumasi)', overflow: TextOverflow.ellipsis)),
+            DropdownMenuItem(value: 'reg_uk_central', child: Text('United Kingdom (London / Manchester)', overflow: TextOverflow.ellipsis)),
+            DropdownMenuItem(value: 'reg_kenya_central', child: Text('Kenya (Nairobi / Mombasa)', overflow: TextOverflow.ellipsis)),
           ],
           onChanged: (val) {
             if (val != null) {
